@@ -131,30 +131,34 @@ class ESC50(data.Dataset):
         return len(self.file_names)
 
     def __getitem__(self, index):
-        file_name = self.file_names[index]
-        path = os.path.join(self.root, file_name)
-        wave, rate = librosa.load(path, sr=config.sr)
+        if index in self.cache:
+            wave_copy = self.cache[index]
+        else:
+            file_name = self.file_names[index]
+            path = os.path.join(self.root, file_name)
+            wave, rate = librosa.load(path, sr=config.sr)
 
-        # identifying the label of the sample from its name
-        temp = file_name.split('.')[0]
-        class_id = int(temp.split('-')[-1])
+            # identifying the label of the sample from its name
+            temp = file_name.split('.')[0]
+            class_id = int(temp.split('-')[-1])
 
-        if wave.ndim == 1:
-            wave = wave[:, np.newaxis]
+            if wave.ndim == 1:
+                wave = wave[:, np.newaxis]
 
-        # normalizing waves to [-1, 1]
-        if np.abs(wave.max()) > 1.0:
-            wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
-        wave = wave.T * 32768.0
+            # normalizing waves to [-1, 1]
+            if np.abs(wave.max()) > 1.0:
+                wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
+            wave = wave.T * 32768.0
 
-        # Remove silent sections
-        start = wave.nonzero()[1].min()
-        end = wave.nonzero()[1].max()
-        wave = wave[:, start: end + 1]
+            # Remove silent sections
+            start = wave.nonzero()[1].min()
+            end = wave.nonzero()[1].max()
+            wave = wave[:, start: end + 1]
 
-        wave_copy = np.copy(wave)
-        wave_copy = self.wave_transforms(wave_copy)
-        wave_copy.squeeze_(0)
+            wave_copy = np.copy(wave)
+            wave_copy = self.wave_transforms(wave_copy)
+            wave_copy.squeeze_(0)
+            self.cache[index] = wave_copy
 
         if self.n_mfcc:
             mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
