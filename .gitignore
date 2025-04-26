@@ -1,2 +1,6 @@
 outputs
 results
+data/.DS_Store
+.DS_Store
+data
+__pycache__

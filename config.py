@@ -32,12 +32,12 @@ val_size = .2  # could be changed
 device_id = 0
 batch_size = 32
 # in Colab to avoid Warning
-num_workers = 2
-num_workers = 0
+num_workers = 4
+#num_workers = 0
 # for local Windows or Linux machine
 # num_workers = 6#16
 persistent_workers = True
-persistent_workers = False
+#persistent_workers = False
 epochs = 200
 #epochs = 1
 # early stopping after epochs with no improvement
