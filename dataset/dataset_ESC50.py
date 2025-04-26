@@ -131,10 +131,10 @@ class ESC50(data.Dataset):
         return len(self.file_names)
 
     def __getitem__(self, index):
+        file_name = self.file_names[index]
         if index in self.cache:
-            wave_copy = self.cache[index]
+            wave_copy, class_id = self.cache[index]
         else:
-            file_name = self.file_names[index]
             path = os.path.join(self.root, file_name)
             wave, rate = librosa.load(path, sr=config.sr)
 
@@ -158,7 +158,7 @@ class ESC50(data.Dataset):
             wave_copy = np.copy(wave)
             wave_copy = self.wave_transforms(wave_copy)
             wave_copy.squeeze_(0)
-            self.cache[index] = wave_copy
+            self.cache[index] = (wave_copy, class_id)
 
         if self.n_mfcc:
             mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
