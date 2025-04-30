@@ -156,9 +156,10 @@ class ESC50(data.Dataset):
             wave = wave[:, start: end + 1]
 
             wave_copy = np.copy(wave)
-            wave_copy = self.wave_transforms(wave_copy)
-            wave_copy.squeeze_(0)
             self.cache[index] = (wave_copy, class_id)
+
+        wave_copy = self.wave_transforms(wave_copy)
+        wave_copy.squeeze_(0)
 
         if self.n_mfcc:
             mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
