@@ -92,26 +92,26 @@ class ESC50(data.Dataset):
         # the number of samples in the wave (=length) required for spectrogram
         out_len = int(((config.sr * 5) // config.hop_length) * config.hop_length)
         train = self.subset == "train"
-        if self.train:
+        if train:
             self.wave_transforms = transforms.Compose(
                 torch.Tensor,
-                transforms.RandomNoise(min_noise=0.001, max_noise=0.005),
-                transforms.RandomScale(max_scale=1.15),
+                transforms.RandomNoise(min_noise=0.001, max_noise=0.005),  # Nur im Training
+                transforms.RandomScale(max_scale=1.15),  # Nur im Training
                 transforms.RandomPadding(out_len=out_len, train=True),
                 transforms.RandomCrop(out_len=out_len, train=True)
             )
             self.spec_transforms = transforms.Compose(
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
-                transforms.FrequencyMask(max_width=..., numbers=...),
-                transforms.TimeMask(max_width=..., numbers=...)
+                transforms.FrequencyMask(max_width=..., numbers=...),  # Nur im Training
+                transforms.TimeMask(max_width=..., numbers=...)  # Nur im Training
             )
         else:  # Für Validierung/Test
             self.wave_transforms = transforms.Compose(
                 torch.Tensor,
-
-                transforms.RandomPadding(out_len=out_len, train=False),
-                transforms.RandomCrop(out_len=out_len, train=False)
+                # Kein RandomNoise, kein RandomScale
+                transforms.RandomPadding(out_len=out_len, train=False),  # Deterministisches Padding
+                transforms.RandomCrop(out_len=out_len, train=False)  # Deterministischer Crop
             )
             self.spec_transforms = transforms.Compose(
                 torch.Tensor,
@@ -119,6 +119,10 @@ class ESC50(data.Dataset):
                 # Kein FrequencyMask, kein TimeMask
             )
 
+        self.spec_transforms = transforms.Compose(
+                torch.Tensor,
+                partial(torch.unsqueeze, dim=0),
+            )
         self.global_mean = global_mean_std[0]
         self.global_std = global_mean_std[1]
         self.n_mfcc = config.n_mfcc if hasattr(config, "n_mfcc") else None
