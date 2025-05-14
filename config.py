@@ -26,7 +26,8 @@ hop_length = 512
 # output_size=config.n_classes,\
 # time_reduce=1)"
 
-model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
+#model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
+model_constructor = "resnet.resnet34_audio(num_classes=config.n_classes)"
 
 # ###TRAINING
 # ratio to split off from training data
