@@ -93,33 +93,33 @@ class ESC50(data.Dataset):
         out_len = int(((config.sr * 5) // config.hop_length) * config.hop_length)
         train = self.subset == "train"
         if train:
-            # augment training data with transformations that include randomness
-            # transforms can be applied on wave and spectral representation
             self.wave_transforms = transforms.Compose(
                 torch.Tensor,
-                #transforms.RandomScale(max_scale=1.25),
-                transforms.RandomPadding(out_len=out_len),
-                transforms.RandomCrop(out_len=out_len)
+                transforms.RandomNoise(min_noise=0.001, max_noise=0.005),  # Nur im Training
+                transforms.RandomScale(max_scale=1.15),  # Nur im Training
+                transforms.RandomPadding(out_len=out_len, train=True),
+                transforms.RandomCrop(out_len=out_len, train=True)
             )
-
             self.spec_transforms = transforms.Compose(
-                # to Tensor and prepend singleton dim
-                #lambda x: torch.Tensor(x).unsqueeze(0),
-                # lambda non-pickleable, problem on windows, replace with partial function
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
+                transforms.FrequencyMask(max_width=..., numbers=...),  # Nur im Training
+                transforms.TimeMask(max_width=..., numbers=...)  # Nur im Training
             )
-
-        else:
-            # for testing transforms are applied deterministically to support reproducible scores
+        else:  # Für Validierung/Test
             self.wave_transforms = transforms.Compose(
                 torch.Tensor,
-                # disable randomness
-                transforms.RandomPadding(out_len=out_len, train=False),
-                transforms.RandomCrop(out_len=out_len, train=False)
+                # Kein RandomNoise, kein RandomScale
+                transforms.RandomPadding(out_len=out_len, train=False),  # Deterministisches Padding
+                transforms.RandomCrop(out_len=out_len, train=False)  # Deterministischer Crop
+            )
+            self.spec_transforms = transforms.Compose(
+                torch.Tensor,
+                partial(torch.unsqueeze, dim=0)
+                # Kein FrequencyMask, kein TimeMask
             )
 
-            self.spec_transforms = transforms.Compose(
+        self.spec_transforms = transforms.Compose(
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
             )
