@@ -155,7 +155,6 @@ if __name__ == "__main__":
     # for spectrograms
     print("WARNING: Using hardcoded global mean and std. Depends on feature settings!")
     for test_fold in config.test_folds:
-        ESC50.cache.clear()
 
         experiment = os.path.join(experiment_root, f'{test_fold}')
         if not os.path.exists(experiment):
