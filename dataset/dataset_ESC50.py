@@ -51,7 +51,7 @@ def download_progress(current, total, width=80):
 
 
 class ESC50(data.Dataset):
-
+    
     def __init__(self, root, test_folds=frozenset((1,)), subset="train", global_mean_std=(0.0, 0.0), download=False):
         self.cache = {}
         audio = 'ESC-50-master/audio'
@@ -102,8 +102,8 @@ class ESC50(data.Dataset):
             self.spec_transforms = transforms.Compose(
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
-                transforms.FrequencyMask(max_width=..., numbers=...),  # Nur im Training
-                transforms.TimeMask(max_width=..., numbers=...)  # Nur im Training
+                transforms.FrequencyMask(max_width=16, numbers=3),  # Nur im Training
+                transforms.TimeMask(max_width=20, numbers=3)  # Nur im Training
             )
         else:  # Für Validierung/Test
             self.wave_transforms = transforms.Compose(
@@ -116,11 +116,6 @@ class ESC50(data.Dataset):
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0)
                 # Kein FrequencyMask, kein TimeMask
-            )
-
-        self.spec_transforms = transforms.Compose(
-                torch.Tensor,
-                partial(torch.unsqueeze, dim=0),
             )
         self.global_mean = global_mean_std[0]
         self.global_std = global_mean_std[1]
