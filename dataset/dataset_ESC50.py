@@ -1,40 +1,57 @@
-import os
-import random
-import numpy as np
-import zipfile
-import requests
-import io
-from functools import partial
-from sklearn.model_selection import train_test_split
-
 import torch
 from torch.utils import data
-import torchaudio
-import torchaudio.functional as F
-import torchaudio.transforms as T
+from sklearn.model_selection import train_test_split
+import requests
+from tqdm import tqdm
+import os
+import sys
+from functools import partial
+import numpy as np
+import librosa
 
 import config
-from dataset import transforms
+from . import transforms
+
+# CUDA for PyTorch
+use_cuda = torch.cuda.is_available()
+device = torch.device("cuda" if use_cuda else "cpu")
 
 
-def download_extract_zip(url, file_path):
-    response = requests.get(url, stream=True)
-    if response.status_code != 200:
-        raise ConnectionError(f"Failed to download {url}. Error: {response.status_code}")
+def download_file(url: str, fname: str, chunk_size=1024):
+    resp = requests.get(url, stream=True)
+    total = int(resp.headers.get('content-length', 0))
+    with open(fname, 'wb') as file, tqdm(
+            desc=fname,
+            total=total,
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024,
+    ) as bar:
+        for data in resp.iter_content(chunk_size=chunk_size):
+            size = file.write(data)
+            bar.update(size)
 
-    dir_path = os.path.dirname(file_path)
-    os.makedirs(dir_path, exist_ok=True)
 
-    with open(file_path, 'wb') as fd:
-        for chunk in response.iter_content(chunk_size=128 * 1024):
-            fd.write(chunk)
+def download_extract_zip(url: str, file_path: str):
+    #import wget
+    import zipfile
+    root = os.path.dirname(file_path)
+    # wget.download(url, out=file_path, bar=download_progress)
+    download_file(url=url, fname=file_path)
+    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        zip_ref.extractall(root)
 
-    with zipfile.ZipFile(file_path, 'r') as z:
-        z.extractall(dir_path)
+
+# create this bar_progress method which is invoked automatically from wget
+def download_progress(current, total, width=80):
+    progress_message = "Downloading: %d%% [%d / %d] bytes" % (current / total * 100, current, total)
+    # Don't use print() as it will print in new line every time.
+    sys.stdout.write("\r" + progress_message)
+    sys.stdout.flush()
 
 
 class ESC50(data.Dataset):
-
+    
     def __init__(self, root, test_folds=frozenset((1,)), subset="train", global_mean_std=(0.0, 0.0), download=False):
         self.cache = {}
         audio = 'ESC-50-master/audio'
@@ -85,8 +102,8 @@ class ESC50(data.Dataset):
             self.spec_transforms = transforms.Compose(
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
-                transforms.FrequencyMask(max_width=12, numbers=2),  # Nur im Training
-                transforms.TimeMask(max_width=15, numbers=2)  # Nur im Training
+                transforms.FrequencyMask(max_width=16, numbers=3),  # Nur im Training
+                transforms.TimeMask(max_width=20, numbers=3)  # Nur im Training
             )
         else:  # Für Validierung/Test
             self.wave_transforms = transforms.Compose(
@@ -104,30 +121,6 @@ class ESC50(data.Dataset):
         self.global_std = global_mean_std[1]
         self.n_mfcc = config.n_mfcc if hasattr(config, "n_mfcc") else None
 
-        # Mel-Spektrogramm-Transformation
-        self.melspec_transform = T.MelSpectrogram(
-            sample_rate=config.sr,
-            n_fft=1024,
-            hop_length=config.hop_length,
-            n_mels=config.n_mels,
-            power=2.0,
-        )
-
-        # MFCC-Transformation
-        if self.n_mfcc:
-            self.mfcc_transform = T.MFCC(
-                sample_rate=config.sr,
-                n_mfcc=self.n_mfcc,
-                melkwargs={
-                    'n_fft': 1024,
-                    'hop_length': config.hop_length,
-                    'n_mels': config.n_mels,
-                }
-            )
-
-        # AmplitudeToDB-Transformation
-        self.amplitude_to_db = T.AmplitudeToDB()
-
     def __len__(self):
         return len(self.file_names)
 
@@ -137,67 +130,65 @@ class ESC50(data.Dataset):
             wave_copy, class_id = self.cache[index]
         else:
             path = os.path.join(self.root, file_name)
-
-            # torchaudio zum Laden verwenden
-            waveform, sample_rate = torchaudio.load(path)
-
-            # Resampling falls nötig
-            if sample_rate != config.sr:
-                wave = F.resample(waveform, sample_rate, config.sr)
-            else:
-                wave = waveform
-
-            # Umwandlung in Mono falls Stereo
-            if wave.shape[0] > 1:  # Stereo zu Mono
-                wave = torch.mean(wave, dim=0, keepdim=True)
+            wave, rate = librosa.load(path, sr=config.sr)
 
             # identifying the label of the sample from its name
             temp = file_name.split('.')[0]
             class_id = int(temp.split('-')[-1])
 
+            if wave.ndim == 1:
+                wave = wave[:, np.newaxis]
+
             # normalizing waves to [-1, 1]
-            if torch.abs(wave).max() > 1.0:
-                wave = (wave - wave.min()) / (wave.max() - wave.min()) * 2.0 - 1.0
-            wave = wave * 32768.0
+            if np.abs(wave.max()) > 1.0:
+                wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
+            wave = wave.T * 32768.0
 
             # Remove silent sections
-            indices = torch.nonzero(wave)
-            if indices.numel() > 0:
-                start = indices[0]
-                end = indices[-1]
-                wave = wave[:, start:end + 1]
+            start = wave.nonzero()[1].min()
+            end = wave.nonzero()[1].max()
+            wave = wave[:, start: end + 1]
 
-            # Für die Konsistenz mit dem Rest des Codes
-            wave_copy = wave.clone()
+            wave_copy = np.copy(wave)
             self.cache[index] = (wave_copy, class_id)
 
-        # Anwendung der Wellenform-Transformationen
         wave_copy = self.wave_transforms(wave_copy)
+        wave_copy.squeeze_(0)
 
-        # Achse für librosa-Kompatibilität entfernen (da wir nun mit Tensoren arbeiten)
-        if wave_copy.dim() > 1:
-            wave_copy = wave_copy.squeeze(0)
-
-        # Feature-Extraktion mit torchaudio
         if self.n_mfcc:
-            # MFCC mit torchaudio berechnen
-            feat = self.mfcc_transform(wave_copy)
-            # torchaudio gibt MFCC im Format [1, n_mfcc, n_frames] zurück,
-            # wir entfernen die erste Dimension für die Kompatibilität
-            feat = feat.squeeze(0)
+            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
+                                        sr=config.sr,
+                                        n_mels=config.n_mels,
+                                        n_fft=1024,
+                                        hop_length=config.hop_length,
+                                        n_mfcc=self.n_mfcc)
+            feat = mfcc
         else:
-            # Mel-Spektrogramm mit torchaudio berechnen
-            s = self.melspec_transform(wave_copy)
-            # Umwandlung in dB-Skala
-            log_s = self.amplitude_to_db(s)
-            # Entfernen der ersten Dimension für die Kompatibilität
-            log_s = log_s.squeeze(0)
+            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                               sr=config.sr,
+                                               n_mels=config.n_mels,
+                                               n_fft=1024,
+                                               hop_length=config.hop_length,
+                                               #center=False,
+                                               )
+            log_s = librosa.power_to_db(s, ref=np.max)
 
-            # Masking für Spektrogramme anwenden
-            feat = self.spec_transforms(log_s)
+            # masking the spectrograms
+            log_s = self.spec_transforms(log_s)
 
-        # Normalisierung
+            feat = log_s
+
+        # normalize
         if self.global_mean:
             feat = (feat - self.global_mean) / self.global_std
 
         return file_name, feat, class_id
+
+
+def get_global_stats(data_path):
+    res = []
+    for i in range(1, 6):
+        train_set = ESC50(subset="train", test_folds={i}, root=data_path, download=True)
+        a = torch.concatenate([v[1] for v in tqdm(train_set)])
+        res.append((a.mean(), a.std()))
+    return np.array(res)
