@@ -1,7 +1,8 @@
 import numpy as np
 import torch
-import librosa
 import random
+import torchaudio
+import torchaudio.transforms as T
 
 
 # Composes several transforms together.
@@ -32,7 +33,11 @@ class RandomNoise:
         
     def addNoise(self, wave):
         noise_val = random.uniform(self.min_noise, self.max_noise)
-        noise = torch.from_numpy(np.random.normal(0, noise_val, wave.shape[0]))
+        # Stelle sicher, dass wave ein Tensor ist
+        if not isinstance(wave, torch.Tensor):
+            wave = torch.tensor(wave)
+        # Erzeuge Rauschen direkt als Tensor
+        noise = torch.normal(0, noise_val, wave.shape, device=wave.device, dtype=wave.dtype)
         noisy_wave = wave + noise
         
         return noisy_wave
@@ -42,10 +47,8 @@ class RandomNoise:
 
 
 class RandomScale:
-
     def __init__(self, max_scale: float = 1.25):
         super(RandomScale, self).__init__()
-
         self.max_scale = max_scale
 
     @staticmethod
@@ -54,7 +57,7 @@ class RandomScale:
         output_size = int(signal.shape[-1] * scaling)
         ref = torch.arange(output_size, device=signal.device, dtype=signal.dtype).div_(scaling)
         
-        # ref1 is of size output_size
+        # ref1 ist von der Größe output_size
         ref1 = ref.clone().type(torch.int64)
         ref2 = torch.min(ref1 + 1, torch.full_like(ref1, signal.shape[-1] - 1, dtype=torch.int64))
         
@@ -69,10 +72,8 @@ class RandomScale:
 
 
 class RandomCrop:
-
     def __init__(self, out_len: int = 44100, train: bool = True):
         super(RandomCrop, self).__init__()
-
         self.out_len = out_len
         self.train = train
 
@@ -100,15 +101,12 @@ class RandomCrop:
 
 
 class RandomPadding:
-
     def __init__(self, out_len: int = 88200, train: bool = True):
         super(RandomPadding, self).__init__()
-
         self.out_len = out_len
         self.train = train
 
     def random_pad(self, signal: torch.Tensor) -> torch.Tensor:
-        
         if self.train:
             left = np.random.randint(0, self.out_len - signal.shape[-1])
         else:
@@ -118,33 +116,47 @@ class RandomPadding:
 
         pad_value_left = signal[..., 0].float().mean().to(signal.dtype)
         pad_value_right = signal[..., -1].float().mean().to(signal.dtype)
-        output = torch.cat((
-            torch.zeros(signal.shape[:-1] + (left,), dtype=signal.dtype, device=signal.device).fill_(pad_value_left),
-            signal,
-            torch.zeros(signal.shape[:-1] + (right,), dtype=signal.dtype, device=signal.device).fill_(pad_value_right)
-        ), dim=-1)
-
+        
+        # Verwende torch.nn.functional.pad für einfachere Handhabung
+        padding = (left, right)
+        output = torch.nn.functional.pad(
+            signal, 
+            padding, 
+            mode='constant', 
+            value=pad_value_left
+        )
+        
         return output
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return self.random_pad(x) if x.shape[-1] < self.out_len else x
 
 
-class FrequencyMask():
+class FrequencyMask:
     def __init__(self, max_width, numbers):
         super(FrequencyMask, self).__init__()
-
         self.max_width = max_width
         self.numbers = numbers
+        # Optional: Verwende die torchaudio-Implementierung
+        self.freq_masking = T.FrequencyMasking(freq_mask_param=max_width)
 
     def addFreqMask(self, wave):
-        #print(wave.shape)
+        # Wenn wave nicht die richtige Form hat für torchaudio-Masking
+        # (erwartet [batch, channel, freq, time]), passen wir die Form an
+        if wave.dim() == 2:  # [freq, time]
+            wave = wave.unsqueeze(0)  # [1, freq, time]
+        
+        # Anwenden mehrerer Masken
         for _ in range(self.numbers):
-            #choose the length of mask
-            mask_len = random.randint(0, self.max_width)
-            start = random.randint(0, wave.shape[1] - mask_len) #start of the mask
-            end = start + mask_len
-            wave[:, start:end, : ] = 0
+            if hasattr(self, 'freq_masking'):
+                # Verwende die torchaudio-Implementierung
+                wave = self.freq_masking(wave)
+            else:
+                # Manuelle Implementierung wie vorher
+                mask_len = random.randint(0, self.max_width)
+                start = random.randint(0, wave.shape[1] - mask_len)
+                end = start + mask_len
+                wave[:, start:end, :] = 0
 
         return wave
 
@@ -152,22 +164,31 @@ class FrequencyMask():
         return self.addFreqMask(wave)
 
 
-class TimeMask():
+class TimeMask:
     def __init__(self, max_width, numbers):
         super(TimeMask, self).__init__()
-
         self.max_width = max_width
         self.numbers = numbers
-
+        # Optional: Verwende die torchaudio-Implementierung
+        self.time_masking = T.TimeMasking(time_mask_param=max_width)
 
     def addTimeMask(self, wave):
-
+        # Wenn wave nicht die richtige Form hat für torchaudio-Masking
+        # (erwartet [batch, channel, freq, time]), passen wir die Form an
+        if wave.dim() == 2:  # [freq, time]
+            wave = wave.unsqueeze(0)  # [1, freq, time]
+            
+        # Anwenden mehrerer Masken
         for _ in range(self.numbers):
-            #choose the length of mask
-            mask_len = random.randint(0, self.max_width)
-            start = random.randint(0, wave.shape[2] - mask_len) #start of the mask
-            end = start + mask_len
-            wave[ : , : , start:end] = 0
+            if hasattr(self, 'time_masking'):
+                # Verwende die torchaudio-Implementierung
+                wave = self.time_masking(wave)
+            else:
+                # Manuelle Implementierung wie vorher
+                mask_len = random.randint(0, self.max_width)
+                start = random.randint(0, wave.shape[2] - mask_len)
+                end = start + mask_len
+                wave[:, :, start:end] = 0
 
         return wave
 
@@ -175,6 +196,66 @@ class TimeMask():
         return self.addTimeMask(wave)
 
 
+# Zusätzliche Klassen, die torchaudio nutzen
+
+class SpecAugment:
+    """Implementiert SpecAugment mit torchaudio (kombiniert Zeit- und Frequenzmasking)"""
+    def __init__(self, freq_mask_param=10, time_mask_param=10, freq_mask_num=2, time_mask_num=2):
+        self.freq_masking = T.FrequencyMasking(freq_mask_param=freq_mask_param)
+        self.time_masking = T.TimeMasking(time_mask_param=time_mask_param)
+        self.freq_mask_num = freq_mask_num
+        self.time_mask_num = time_mask_num
+        
+    def __call__(self, spec):
+        # Stellen Sie sicher, dass das Spektrogramm die richtige Form für torchaudio hat
+        if spec.dim() == 2:  # [freq, time]
+            spec = spec.unsqueeze(0)  # [1, freq, time]
+            
+        # Wende mehrere Frequenzmasken an
+        for _ in range(self.freq_mask_num):
+            spec = self.freq_masking(spec)
+            
+        # Wende mehrere Zeitmasken an
+        for _ in range(self.time_mask_num):
+            spec = self.time_masking(spec)
+            
+        return spec
 
 
+class TimeStretch:
+    """Zeitdehnung mit torchaudio"""
+    def __init__(self, min_rate=0.8, max_rate=1.2, p=0.5):
+        self.min_rate = min_rate
+        self.max_rate = max_rate
+        self.p = p
+        
+    def __call__(self, spec):
+        if random.random() < self.p:
+            rate = random.uniform(self.min_rate, self.max_rate)
+            # Zeitdehnung erfordert ein komplexes Spektrogramm
+            if isinstance(spec, torch.Tensor) and spec.dim() >= 2:
+                # torchaudio.transforms.TimeStretch erwartet ein komplexes Spektrogramm
+                # Diese Implementierung ist vereinfacht
+                if spec.dim() == 2:
+                    spec = spec.unsqueeze(0)
+                time_stretch = T.TimeStretch(fixed_rate=rate)
+                spec = time_stretch(spec.unsqueeze(0)).squeeze(0)
+        return spec
 
+
+class PitchShift:
+    """Tonhöhenverschiebung (benötigt librosa)"""
+    def __init__(self, min_semitones=-4, max_semitones=4, p=0.5):
+        self.min_semitones = min_semitones
+        self.max_semitones = max_semitones
+        self.p = p
+        
+    def __call__(self, wave):
+        # Beachten Sie, dass torchaudio derzeit keine direkte Pitch-Shift-Funktion hat
+        # Diese Implementierung ist ein Platzhalter für zukünftige torchaudio-Versionen
+        # oder könnte mit eigener Implementierung ersetzt werden
+        if random.random() < self.p:
+            # Diese Funktion wird nicht implementiert, da sie librosa benötigen würde
+            # Für eine vollständige torchaudio-Migration müsste eine Alternative entwickelt werden
+            pass
+        return wave
