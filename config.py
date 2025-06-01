@@ -42,10 +42,10 @@ num_workers = 4
 # num_workers = 6#16
 persistent_workers = True
 #persistent_workers = False
-epochs = 50
+epochs = 100
 #epochs = 1
 # early stopping after epochs with no improvement
-patience = 50
+patience = 2ß
 lr = 1e-3
 weight_decay = 1e-2
 warm_epochs = 15
