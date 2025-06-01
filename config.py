@@ -34,7 +34,7 @@ model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
 # ratio to split off from training data
 val_size = .2  # could be changed
 device_id = 0
-batch_size = 32
+batch_size = 48
 # in Colab to avoid Warning
 num_workers = 4
 #num_workers = 0
@@ -47,11 +47,11 @@ epochs = 50
 # early stopping after epochs with no improvement
 patience = 20
 lr = 5.5e-4
-weight_decay = 1e-2
+weight_decay = 1e-4
 warm_epochs = 15
 dropout_rate = 0.2
 gamma = 0.8
-step_size = 5
+step_size = 3
 
 # ### TESTING
 # model checkpoints loaded for testing
