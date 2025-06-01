@@ -45,7 +45,7 @@ persistent_workers = True
 epochs = 100
 #epochs = 1
 # early stopping after epochs with no improvement
-patience = 2ß
+patience = 20
 lr = 1e-3
 weight_decay = 1e-2
 warm_epochs = 15
