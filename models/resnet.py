@@ -110,7 +110,7 @@ class ResNetAudio(nn.Module):
         return x
 
 
-# Helper functions to create specific ResNetAudio models (e.g., ResNet18-like)
+# Helper functions to create specific ResNetAudio models
 def resnet18_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-18 model for audio."""
     return ResNetAudio(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, input_channels=input_channels)
@@ -120,16 +120,6 @@ def resnet34_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-34 model for audio."""
     return ResNetAudio(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, input_channels=input_channels)
 
-# Example of how you might define it in your config.py:
-# model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
-#
-# Or, if you want to pass n_mels and n_steps (though not strictly needed with AdaptiveAvgPool2d):
-# class ResNetAudioCustom(ResNetAudio):
-#     def __init__(self, n_steps, n_mels, output_size, block_type=BasicBlock, layers=[2,2,2,2], **kwargs):
-#         # n_steps and n_mels are not directly used by the ResNetAudio base if AdaptiveAvgPool2d is used
-#         # but can be kept for interface consistency if desired.
-#         super().__init__(block=block_type, layers=layers, num_classes=output_size, input_channels=1)
-
-# Note: The existing ResNet class in the initial problem description was an MLP.
-# This implementation provides a proper ResNet CNN structure.
-# You would replace the content of your resnet.py with this code.
+def resnet14_audio(num_classes=50, input_channels=1):
+    """Constructs a ResNet-14 model for audio."""
+    return ResNetAudio(BasicBlock, [2, 2, 1, 1], num_classes=num_classes, input_channels=input_channels)
