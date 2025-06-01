@@ -87,7 +87,47 @@ def train_epoch():
     return acc, losses
 
 
+def print_training_parameters():
+    """Gibt alle wichtigen Trainingsparameter in der Konsole aus."""
+    print("\n" + "="*50)
+    print("TRAININGSPARAMETER:")
+    print("="*50)
+    
+    print("\nMODELL:")
+    print(f"- Model: {config.model_constructor}")
+    print(f"- Dropout Rate: {config.dropout_rate if hasattr(config, 'dropout_rate') else 'None'}")
+    
+    print("\nDATENREPRÄSENTATION:")
+    print(f"- Sampling Rate: {config.sr}")
+    print(f"- Mel Filter: {config.n_mels}")
+    print(f"- Hop Length: {config.hop_length}")
+    print(f"- MFCC: {config.n_mfcc if hasattr(config, 'n_mfcc') else 'None'}")
+    
+    print("\nTRAININGSKONFIGURATION:")
+    print(f"- Validierungs-Anteil: {config.val_size}")
+    print(f"- Batch Size: {config.batch_size}")
+    print(f"- Epochs: {config.epochs}")
+    print(f"- Early Stopping Patience: {config.patience}")
+    print(f"- Device: {device}")
+    
+    print("\nOPTIMIERUNG:")
+    print(f"- Learning Rate: {config.lr}")
+    print(f"- Weight Decay: {config.weight_decay}")
+    print(f"- Warm-Up Epochs: {config.warm_epochs}")
+    print(f"- LR Gamma: {config.gamma}")
+    print(f"- LR Step Size: {config.step_size}")
+    
+    print("\nDATENAUGMENTATION:")
+    print(f"- Random Noise: min={0.001}, max={0.005}")
+    print(f"- Random Scale: max_scale={1.15}")
+    print(f"- Frequency Mask: width={16}, numbers={3}")
+    print(f"- Time Mask: width={20}, numbers={3}")
+    
+    print("="*50 + "\n")
+
 def fit_classifier():
+    print_training_parameters()
+    
     num_epochs = config.epochs
 
     loss_stopping = EarlyStopping(patience=config.patience, delta=0.002, verbose=True, float_fmt=float_fmt,
@@ -155,7 +195,6 @@ if __name__ == "__main__":
     # for spectrograms
     print("WARNING: Using hardcoded global mean and std. Depends on feature settings!")
     for test_fold in config.test_folds:
-
         experiment = os.path.join(experiment_root, f'{test_fold}')
         if not os.path.exists(experiment):
             os.mkdir(experiment)
