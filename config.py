@@ -50,7 +50,7 @@ epochs = 100
 # early stopping after epochs with no improvement
 patience = 20
 lr = 5.5e-4
-weight_decay = 1e-4
+weight_decay = 1e-2
 beta1 = 0.9  # AdamW Beta1 Parameter
 beta2 = 0.999  # AdamW Beta2 Parameter
 eps = 1e-8   # AdamW Epsilon
