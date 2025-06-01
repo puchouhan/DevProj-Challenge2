@@ -53,7 +53,7 @@ def download_progress(current, total, width=80):
 class ESC50(data.Dataset):
     
     def __init__(self, root, test_folds=frozenset((1,)), subset="train", global_mean_std=(0.0, 0.0), download=False):
-        self.cache = {}
+        # Removed cache dictionary
         audio = 'ESC-50-master/audio'
         root = os.path.normpath(root)
         audio = os.path.join(root, audio)
@@ -126,31 +126,29 @@ class ESC50(data.Dataset):
 
     def __getitem__(self, index):
         file_name = self.file_names[index]
-        if index in self.cache:
-            wave_copy, class_id = self.cache[index]
-        else:
-            path = os.path.join(self.root, file_name)
-            wave, rate = librosa.load(path, sr=config.sr)
+        # Removed cache check - always load from file
+        path = os.path.join(self.root, file_name)
+        wave, rate = librosa.load(path, sr=config.sr)
 
-            # identifying the label of the sample from its name
-            temp = file_name.split('.')[0]
-            class_id = int(temp.split('-')[-1])
+        # identifying the label of the sample from its name
+        temp = file_name.split('.')[0]
+        class_id = int(temp.split('-')[-1])
 
-            if wave.ndim == 1:
-                wave = wave[:, np.newaxis]
+        if wave.ndim == 1:
+            wave = wave[:, np.newaxis]
 
-            # normalizing waves to [-1, 1]
-            if np.abs(wave.max()) > 1.0:
-                wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
-            wave = wave.T * 32768.0
+        # normalizing waves to [-1, 1]
+        if np.abs(wave.max()) > 1.0:
+            wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
+        wave = wave.T * 32768.0
 
-            # Remove silent sections
-            start = wave.nonzero()[1].min()
-            end = wave.nonzero()[1].max()
-            wave = wave[:, start: end + 1]
+        # Remove silent sections
+        start = wave.nonzero()[1].min()
+        end = wave.nonzero()[1].max()
+        wave = wave[:, start: end + 1]
 
-            wave_copy = np.copy(wave)
-            self.cache[index] = (wave_copy, class_id)
+        wave_copy = np.copy(wave)
+        # Removed caching of wave_copy
 
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
