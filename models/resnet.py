@@ -17,11 +17,12 @@ def conv1x1(in_planes, out_planes, stride=1):
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, downsample=None):
+    def __init__(self, in_planes, planes, stride=1, downsample=None, dropout_rate=None):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(in_planes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
+        self.dropout = nn.Dropout2d(p=dropout_rate) if dropout_rate else nn.Identity()
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = nn.BatchNorm2d(planes)
         self.downsample = downsample
@@ -33,6 +34,7 @@ class BasicBlock(nn.Module):
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
+        out = self.dropout(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -52,12 +54,13 @@ class Bottleneck(nn.Module):
     # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1, downsample=None):
+    def __init__(self, in_planes, planes, stride=1, downsample=None, dropout_rate=None):
         super(Bottleneck, self).__init__()
         self.conv1 = conv1x1(in_planes, planes)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = conv3x3(planes, planes, stride)
         self.bn2 = nn.BatchNorm2d(planes)
+        self.dropout = nn.Dropout2d(p=dropout_rate) if dropout_rate else nn.Identity()
         self.conv3 = conv1x1(planes, planes * self.expansion)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
@@ -74,6 +77,7 @@ class Bottleneck(nn.Module):
         out = self.conv2(out)
         out = self.bn2(out)
         out = self.relu(out)
+        out = self.dropout(out)
 
         out = self.conv3(out)
         out = self.bn3(out)
@@ -88,9 +92,10 @@ class Bottleneck(nn.Module):
 
 
 class ResNetAudio(nn.Module):
-    def __init__(self, block, layers, num_classes=50, input_channels=1):
+    def __init__(self, block, layers, num_classes=50, input_channels=1, dropout_rate=None):
         super(ResNetAudio, self).__init__()
         self.in_planes = 64
+        self.dropout_rate = dropout_rate
 
         # Input layer: Conv2d for single-channel spectrogram
         # Spectrograms are (batch, 1, n_mels, n_steps)
@@ -101,12 +106,13 @@ class ResNetAudio(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        self.layer1 = self._make_layer(block, 64, layers[0], dropout_rate=dropout_rate)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dropout_rate=dropout_rate)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dropout_rate=dropout_rate)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dropout_rate=dropout_rate)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.dropout = nn.Dropout(p=dropout_rate) if dropout_rate else nn.Identity()
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
@@ -116,7 +122,7 @@ class ResNetAudio(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, block, planes, num_blocks, stride=1):
+    def _make_layer(self, block, planes, num_blocks, stride=1, dropout_rate=None):
         downsample = None
         if stride != 1 or self.in_planes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -125,10 +131,10 @@ class ResNetAudio(nn.Module):
             )
 
         layers_list = []
-        layers_list.append(block(self.in_planes, planes, stride, downsample))
+        layers_list.append(block(self.in_planes, planes, stride, downsample, dropout_rate))
         self.in_planes = planes * block.expansion
         for _ in range(1, num_blocks):
-            layers_list.append(block(self.in_planes, planes))
+            layers_list.append(block(self.in_planes, planes, dropout_rate=dropout_rate))
 
         return nn.Sequential(*layers_list)
 
@@ -146,6 +152,7 @@ class ResNetAudio(nn.Module):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
+        x = self.dropout(x)
         x = self.fc(x)
 
         return x
@@ -154,25 +161,43 @@ class ResNetAudio(nn.Module):
 # Helper functions to create specific ResNetAudio models
 def resnet18_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-18 model for audio."""
-    return ResNetAudio(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, input_channels=input_channels)
+    import config
+    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
+    return ResNetAudio(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, 
+                      input_channels=input_channels, dropout_rate=dropout_rate)
 
 
 def resnet34_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-34 model for audio."""
-    return ResNetAudio(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, input_channels=input_channels)
+    import config
+    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
+    return ResNetAudio(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, 
+                      input_channels=input_channels, dropout_rate=dropout_rate)
 
 def resnet14_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-14 model for audio."""
-    return ResNetAudio(BasicBlock, [2, 2, 1, 1], num_classes=num_classes, input_channels=input_channels)
+    import config
+    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
+    return ResNetAudio(BasicBlock, [2, 2, 1, 1], num_classes=num_classes, 
+                      input_channels=input_channels, dropout_rate=dropout_rate)
 
 def resnet50_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-50 model for audio."""
-    return ResNetAudio(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, input_channels=input_channels)
+    import config
+    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
+    return ResNetAudio(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, 
+                      input_channels=input_channels, dropout_rate=dropout_rate)
 
 def resnet101_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-101 model for audio."""
-    return ResNetAudio(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, input_channels=input_channels)
+    import config
+    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
+    return ResNetAudio(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, 
+                      input_channels=input_channels, dropout_rate=dropout_rate)
 
 def resnet152_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-152 model for audio."""
-    return ResNetAudio(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, input_channels=input_channels)
+    import config
+    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
+    return ResNetAudio(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, 
+                      input_channels=input_channels, dropout_rate=dropout_rate)
