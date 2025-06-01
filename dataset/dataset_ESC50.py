@@ -95,8 +95,8 @@ class ESC50(data.Dataset):
             self.wave_transforms = transforms.Compose(
                 torch.Tensor,
                 transforms.RandomNoise(min_noise=0.001, max_noise=0.005),  # Nur im Training
-              #  transforms.RandomScale(max_scale=1.15),  # Nur im Training
-               # transforms.RandomPadding(out_len=out_len, train=True),
+                transforms.RandomScale(max_scale=1.15),  # Nur im Training
+                transforms.RandomPadding(out_len=out_len, train=True),
                 transforms.RandomCrop(out_len=out_len, train=True)
             )
             self.spec_transforms = transforms.Compose(
