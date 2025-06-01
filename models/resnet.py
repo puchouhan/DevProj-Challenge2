@@ -46,6 +46,47 @@ class BasicBlock(nn.Module):
         return out
 
 
+class Bottleneck(nn.Module):
+    # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
+    # while original implementation places the stride at the first 1x1 convolution(self.conv1)
+    # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
+    expansion = 4
+
+    def __init__(self, in_planes, planes, stride=1, downsample=None):
+        super(Bottleneck, self).__init__()
+        self.conv1 = conv1x1(in_planes, planes)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = conv3x3(planes, planes, stride)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = conv1x1(planes, planes * self.expansion)
+        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+
+        return out
+
+
 class ResNetAudio(nn.Module):
     def __init__(self, block, layers, num_classes=50, input_channels=1):
         super(ResNetAudio, self).__init__()
@@ -123,3 +164,15 @@ def resnet34_audio(num_classes=50, input_channels=1):
 def resnet14_audio(num_classes=50, input_channels=1):
     """Constructs a ResNet-14 model for audio."""
     return ResNetAudio(BasicBlock, [2, 2, 1, 1], num_classes=num_classes, input_channels=input_channels)
+
+def resnet50_audio(num_classes=50, input_channels=1):
+    """Constructs a ResNet-50 model for audio."""
+    return ResNetAudio(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, input_channels=input_channels)
+
+def resnet101_audio(num_classes=50, input_channels=1):
+    """Constructs a ResNet-101 model for audio."""
+    return ResNetAudio(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, input_channels=input_channels)
+
+def resnet152_audio(num_classes=50, input_channels=1):
+    """Constructs a ResNet-152 model for audio."""
+    return ResNetAudio(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, input_channels=input_channels)
