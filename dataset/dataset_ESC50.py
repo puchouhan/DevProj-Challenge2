@@ -33,7 +33,7 @@ def download_file(url: str, fname: str, chunk_size=1024):
 
 
 def download_extract_zip(url: str, file_path: str):
-    # import wget
+    #import wget
     import zipfile
     root = os.path.dirname(file_path)
     # wget.download(url, out=file_path, bar=download_progress)
@@ -169,7 +169,7 @@ class ESC50(data.Dataset):
                                                n_mels=config.n_mels,
                                                n_fft=1024,
                                                hop_length=config.hop_length,
-                                               # center=False,
+                                               #center=False,
                                                )
             log_s = librosa.power_to_db(s, ref=np.max)
 
