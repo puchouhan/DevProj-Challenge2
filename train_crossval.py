@@ -238,10 +238,13 @@ if __name__ == "__main__":
             # Define a loss function and optimizer
             criterion = nn.CrossEntropyLoss().to(device)
 
-            optimizer = torch.optim.SGD(model.parameters(),
-                                        lr=config.lr,
-                                        momentum=0.9,
-                                        weight_decay=config.weight_decay)
+            optimizer = torch.optim.AdamW(
+                model.parameters(), 
+                lr=config.lr, 
+                betas=(config.beta1, config.beta2) if hasattr(config, 'beta1') and hasattr(config, 'beta2') else (0.9, 0.999),
+                eps=config.eps if hasattr(config, 'eps') else 1e-8,
+                weight_decay=config.weight_decay
+            )
 
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
                                                         step_size=config.step_size,
