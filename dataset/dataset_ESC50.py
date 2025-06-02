@@ -126,31 +126,34 @@ class ESC50(data.Dataset):
 
     def __getitem__(self, index):
         file_name = self.file_names[index]
-        if file_name in self.cache:
-            file_name, feat, class_id = self.cache[file_name]
-            return file_name, feat, class_id
+        if index in self.cache:
+            wave_copy, class_id = self.cache[index]
+        else:
+            path = os.path.join(self.root, file_name)
+            wave, rate = librosa.load(path, sr=config.sr)
 
-        path = os.path.join(self.root, file_name)
-        wave, rate = librosa.load(path, sr=config.sr)
+            # identifying the label of the sample from its name
+            temp = file_name.split('.')[0]
+            class_id = int(temp.split('-')[-1])
 
-        temp = file_name.split('.')[0]
-        class_id = int(temp.split('-')[-1])
+            if wave.ndim == 1:
+                wave = wave[:, np.newaxis]
 
-        if wave.ndim == 1:
-            wave = wave[:, np.newaxis]
+            # normalizing waves to [-1, 1]
+            if np.abs(wave.max()) > 1.0:
+                wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
+            wave = wave.T * 32768.0
 
-        if np.abs(wave.max()) > 1.0:
-            wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
-        wave = wave.T * 32768.0
+            # Remove silent sections
+            start = wave.nonzero()[1].min()
+            end = wave.nonzero()[1].max()
+            wave = wave[:, start: end + 1]
 
-        start = wave.nonzero()[1].min()
-        end = wave.nonzero()[1].max()
-        wave = wave[:, start: end + 1]
+            wave_copy = np.copy(wave)
+            self.cache[index] = (wave_copy, class_id)
 
-        wave_copy = np.copy(wave)
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
-        self.cache[file_name] = (file_name, class_id)
 
         if self.n_mfcc:
             mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
@@ -165,33 +168,45 @@ class ESC50(data.Dataset):
                                                sr=config.sr,
                                                n_mels=config.n_mels,
                                                n_fft=1024,
-                                               hop_length=config.hop_length)
+                                               hop_length=config.hop_length,
+                                               #center=False,
+                                               )
             log_s = librosa.power_to_db(s, ref=np.max)
+
+            # masking the spectrograms
             log_s = self.spec_transforms(log_s)
+
             feat = log_s
+            # Anstatt einfach den gleichen Kanal zu duplizieren, erstellen wir ein echtes RGB-Bild
+            if feat.ndim == 2:
+                # Normalisieren für bessere Farbdarstellung
+                feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
-        if feat.ndim == 2:
-            feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
+                # RGB-Kanäle erstellen
+                n_freqs = feat_norm.shape[0]
+                rgb_tensor = np.zeros((3, n_freqs, feat_norm.shape[1]), dtype=np.float32)
 
-            n_freqs = feat_norm.shape[0]
-            rgb_tensor = np.zeros((3, n_freqs, feat_norm.shape[1]), dtype=np.float32)
+                # Frequenzbereiche auf RGB-Kanäle aufteilen
+                freq_ranges = [
+                    (0, n_freqs // 3),  # Niedrig -> Rot
+                    (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
+                    (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
+                ]
 
-            freq_ranges = [
-                (0, n_freqs // 3),  # Niedrig -> Rot
-                (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
-                (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
-            ]
+                for channel, (start_freq, end_freq) in enumerate(freq_ranges):
+                    rgb_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
 
-            for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-                rgb_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
+                feat = torch.tensor(rgb_tensor, dtype=torch.float)
+            else:
+                # Falls feat bereits ein 3D-Tensor ist, einfach expandieren
+                feat = feat.expand(3, -1, -1)
 
-            feat = torch.tensor(rgb_tensor, dtype=torch.float)
-        else:
-            # Falls feat bereits ein 3D-Tensor ist, einfach expandieren
-            feat = feat.expand(3, -1, -1)
-
+        # normalize
+        if self.global_mean:
+            feat = (feat - self.global_mean) / self.global_std
 
         return file_name, feat, class_id
+
 
 
 def get_global_stats(data_path):
