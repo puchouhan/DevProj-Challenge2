@@ -155,55 +155,34 @@ class ESC50(data.Dataset):
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
 
-        # Mel-Spektrogramm berechnen
-        s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                           sr=config.sr,
-                                           n_mels=config.n_mels,
-                                           n_fft=1024,
-                                           hop_length=config.hop_length)
-
-        # In dB umwandeln
-        log_s = librosa.power_to_db(s, ref=np.max)
-
-        # Normalisierung auf [0, 1] für die Farbzuordnung
-        log_s_norm = (log_s - log_s.min()) / (log_s.max() - log_s.min() + 1e-9)
-
-        # Erstellen eines RGB-Bildes aus dem Spektrogramm
-        # Wir verwenden eine Farbkarte ähnlich wie bei der Spektrogramm-Visualisierung
-        # Der niedrigere Frequenzbereich wird rot, der mittlere grün und der höhere blau dargestellt
-
-        n_freqs = log_s_norm.shape[0]
-        freq_ranges = [
-            (0, n_freqs // 3),  # Niedriger Frequenzbereich (Rot)
-            (n_freqs // 3, 2 * n_freqs // 3),  # Mittlerer Frequenzbereich (Grün)
-            (2 * n_freqs // 3, n_freqs)  # Hoher Frequenzbereich (Blau)
-        ]
-
-        # Initialisierung der RGB-Kanäle
-        rgb_image = np.zeros((3, n_freqs, log_s_norm.shape[1]), dtype=np.float32)
-
-        # Frequenzbereiche den RGB-Kanälen zuordnen
-        for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-            # Der jeweilige Frequenzbereich wird im entsprechenden Kanal intensiver dargestellt
-            rgb_image[channel, start_freq:end_freq, :] = log_s_norm[start_freq:end_freq, :]
-
-        # In PyTorch-Tensor umwandeln
-        rgb_tensor = torch.from_numpy(rgb_image)
-
-        # Masking auf dem RGB-Bild anwenden (falls gewünscht)
-        if self.subset == "train":
-            # Anwendung der Transformationen für jede Schicht einzeln
-            for i in range(3):
-                rgb_tensor[i:i + 1] = self.spec_transforms(rgb_tensor[i:i + 1])
+        if self.n_mfcc:
+            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
+                                        sr=config.sr,
+                                        n_mels=config.n_mels,
+                                        n_fft=1024,
+                                        hop_length=config.hop_length,
+                                        n_mfcc=self.n_mfcc)
+            feat = mfcc
         else:
-            # Für Test/Validierung keine Maskierung
-            rgb_tensor = torch.tensor(rgb_tensor, dtype=torch.float)
+            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                               sr=config.sr,
+                                               n_mels=config.n_mels,
+                                               n_fft=1024,
+                                               hop_length=config.hop_length,
+                                               #center=False,
+                                               )
+            log_s = librosa.power_to_db(s, ref=np.max)
 
-        # Normalisierung, falls globale Statistiken vorhanden sind
+            # masking the spectrograms
+            log_s = self.spec_transforms(log_s)
+
+            feat = log_s
+
+        # normalize
         if self.global_mean:
-            rgb_tensor = (rgb_tensor - self.global_mean) / self.global_std
+            feat = (feat - self.global_mean) / self.global_std
 
-        return file_name, rgb_tensor, class_id
+        return file_name, feat, class_id
 
 
 def get_global_stats(data_path):
