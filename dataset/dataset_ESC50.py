@@ -126,81 +126,80 @@ class ESC50(data.Dataset):
 
     def __getitem__(self, index):
         file_name = self.file_names[index]
-        if index in self.cache:
-            wave_copy, class_id = self.cache[index]
-        else:
-            path = os.path.join(self.root, file_name)
-            wave, rate = librosa.load(path, sr=config.sr)
+        if file_name in self.cache:
+            file_name, feat, class_id = self.cache[file_name]
+            return file_name, feat, class_id
 
-            # identifying the label of the sample from its name
-            temp = file_name.split('.')[0]
-            class_id = int(temp.split('-')[-1])
+        path = os.path.join(self.root, file_name)
+        wave, rate = librosa.load(path, sr=config.sr)
 
-            if wave.ndim == 1:
-                wave = wave[:, np.newaxis]
+        temp = file_name.split('.')[0]
+        class_id = int(temp.split('-')[-1])
 
-            # normalizing waves to [-1, 1]
-            if np.abs(wave.max()) > 1.0:
-                wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
-            wave = wave.T * 32768.0
+        if wave.ndim == 1:
+            wave = wave[:, np.newaxis]
 
-            # Remove silent sections
-            start = wave.nonzero()[1].min()
-            end = wave.nonzero()[1].max()
-            wave = wave[:, start: end + 1]
+        if np.abs(wave.max()) > 1.0:
+            wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
+        wave = wave.T * 32768.0
 
-            wave_copy = np.copy(wave)
-            self.cache[index] = (wave_copy, class_id)
+        start = wave.nonzero()[1].min()
+        end = wave.nonzero()[1].max()
+        wave = wave[:, start: end + 1]
 
+        wave_copy = np.copy(wave)
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
 
-        # Mel-Spektrogramm berechnen
-        s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                           sr=config.sr,
-                                           n_mels=config.n_mels,
-                                           n_fft=1024,
-                                           hop_length=config.hop_length)
+        if self.n_mfcc:
+            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
+                                        sr=config.sr,
+                                        n_mels=config.n_mels,
+                                        n_fft=1024,
+                                        hop_length=config.hop_length,
+                                        n_mfcc=self.n_mfcc)
+            feat = mfcc
+        else:
+            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                               sr=config.sr,
+                                               n_mels=config.n_mels,
+                                               n_fft=1024,
+                                               hop_length=config.hop_length)
+            log_s = librosa.power_to_db(s, ref=np.max)
+            log_s = self.spec_transforms(log_s)
+            feat = log_s
 
-        # In dB umwandeln
-        log_s = librosa.power_to_db(s, ref=np.max)
+        # Enforce correct number of channels based on config
+        if config.num_channels == 1:
+            feat = feat if feat.ndim == 3 else feat.unsqueeze(0)
+        elif config.num_channels == 3:
+            # Anstatt einfach den gleichen Kanal zu duplizieren, erstellen wir ein echtes RGB-Bild
+            if feat.ndim == 2:
+                # Normalisieren für bessere Farbdarstellung
+                feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
-        # Normalisierung auf [0, 1] für die Farbzuordnung
-        log_s_norm = (log_s - log_s.min()) / (log_s.max() - log_s.min() + 1e-9)
+                # RGB-Kanäle erstellen
+                n_freqs = feat_norm.shape[0]
+                rgb_tensor = np.zeros((3, n_freqs, feat_norm.shape[1]), dtype=np.float32)
 
-        # Erstellen eines RGB-Bildes aus dem Spektrogramm
-        # Der niedrigere Frequenzbereich wird rot, der mittlere grün und der höhere blau dargestellt
-        n_freqs = log_s_norm.shape[0]
-        freq_ranges = [
-            (0, n_freqs // 3),  # Niedriger Frequenzbereich (Rot)
-            (n_freqs // 3, 2 * n_freqs // 3),  # Mittlerer Frequenzbereich (Grün)
-            (2 * n_freqs // 3, n_freqs)  # Hoher Frequenzbereich (Blau)
-        ]
+                # Frequenzbereiche auf RGB-Kanäle aufteilen
+                freq_ranges = [
+                    (0, n_freqs // 3),  # Niedrig -> Rot
+                    (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
+                    (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
+                ]
 
-        # Initialisierung der RGB-Kanäle
-        rgb_image = np.zeros((3, n_freqs, log_s_norm.shape[1]), dtype=np.float32)
+                for channel, (start_freq, end_freq) in enumerate(freq_ranges):
+                    rgb_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
 
-        # Frequenzbereiche den RGB-Kanälen zuordnen
-        for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-            # Der jeweilige Frequenzbereich wird im entsprechenden Kanal intensiver dargestellt
-            rgb_image[channel, start_freq:end_freq, :] = log_s_norm[start_freq:end_freq, :]
+                feat = torch.tensor(rgb_tensor, dtype=torch.float)
+            else:
+                # Falls feat bereits ein 3D-Tensor ist, einfach expandieren
+                feat = feat.expand(3, -1, -1)
+        else:
+            raise ValueError(f"Unsupported number of channels: {config.num_channels}")
 
-        # In PyTorch-Tensor umwandeln
-        feat = torch.from_numpy(rgb_image)
-
-        # Masking auf dem RGB-Bild anwenden (falls im Trainingsmodus)
-        if self.subset == "train":
-            # Anwendung der Transformationen für jede Schicht einzeln
-            for i in range(3):
-                channel = feat[i:i + 1]
-                # Wir wenden die Maskierung nur auf den jeweiligen Kanal an
-                channel = self.spec_transforms(channel.squeeze(0)).unsqueeze(0)
-                feat[i:i + 1] = channel
-
-        # Normalisierung, falls globale Statistiken vorhanden sind
-        if self.global_mean:
-            feat = (feat - self.global_mean) / self.global_std
-
+        self.cache[file_name] = (file_name, feat, class_id)
         return file_name, feat, class_id
 
 
