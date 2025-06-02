@@ -125,64 +125,64 @@ class ESC50(data.Dataset):
         return len(self.file_names)
 
     def __getitem__(self, index):
-    # ... vorhandener Code bleibt gleich ...
-    
-    wave_copy = self.wave_transforms(wave_copy)
-    wave_copy.squeeze_(0)
+        # ... vorhandener Code bleibt gleich ...
+        
+        wave_copy = self.wave_transforms(wave_copy)
+        wave_copy.squeeze_(0)
 
-    if self.n_mfcc:
-        mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
-                                    sr=config.sr,
-                                    n_mels=config.n_mels,
-                                    n_fft=1024,
-                                    hop_length=config.hop_length,
-                                    n_mfcc=self.n_mfcc)
-        # MFCC in 3-Kanal-Bild umwandeln
-        mfcc_tensor = self.spec_transforms(mfcc)
-        
-        # Normalisieren für Farbdarstellung
-        normalized_mfcc = (mfcc_tensor - mfcc_tensor.min()) / (mfcc_tensor.max() - mfcc_tensor.min() + 1e-8)
-        
-        # RGB-Kanäle erstellen
-        red_channel = torch.pow(normalized_mfcc, 0.7)  # Rot für hohe Intensitäten
-        green_channel = torch.sin(normalized_mfcc * 3.14)  # Grün für mittlere Intensitäten
-        blue_channel = 1.0 - torch.pow(normalized_mfcc, 2)  # Blau für niedrige Intensitäten
-        
-        # Zu 3-Kanal-Bild kombinieren
-        feat = torch.cat([red_channel, green_channel, blue_channel], dim=0)
-    else:
-        s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                           sr=config.sr,
-                                           n_mels=config.n_mels,
-                                           n_fft=1024,
-                                           hop_length=config.hop_length)
-        log_s = librosa.power_to_db(s, ref=np.max)
-
-        # Spektrogramm in einen Tensor umwandeln und ausmaskieren
-        log_s_tensor = self.spec_transforms(log_s)
-        
-        # Normalisieren für Farbdarstellung
-        normalized_s = (log_s_tensor - log_s_tensor.min()) / (log_s_tensor.max() - log_s_tensor.min() + 1e-8)
-        
-        # RGB-Kanäle erstellen
-        red_channel = torch.pow(normalized_s, 0.7)  # Verstärkt hohe Werte (helle Bereiche)
-        green_channel = torch.sin(normalized_s * 3.14)  # Betont mittlere Werte
-        blue_channel = 1.0 - torch.pow(normalized_s, 2)  # Betont niedrige Werte
-        
-        # Zu 3-Kanal-Bild kombinieren
-        feat = torch.cat([red_channel, green_channel, blue_channel], dim=0)
-
-    # normalize
-    if self.global_mean:
-        # Bei 3-Kanal-Bildern müssen wir über die Kanäle individuell normalisieren
-        # Da global_mean/global_std für 1-Kanal konzipiert wurde, wenden wir es auf jeden Kanal an
-        if isinstance(self.global_mean, np.ndarray) and self.global_mean.ndim == 0:
-            feat = (feat - self.global_mean) / self.global_std
+        if self.n_mfcc:
+            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
+                                        sr=config.sr,
+                                        n_mels=config.n_mels,
+                                        n_fft=1024,
+                                        hop_length=config.hop_length,
+                                        n_mfcc=self.n_mfcc)
+            # MFCC in 3-Kanal-Bild umwandeln
+            mfcc_tensor = self.spec_transforms(mfcc)
+            
+            # Normalisieren für Farbdarstellung
+            normalized_mfcc = (mfcc_tensor - mfcc_tensor.min()) / (mfcc_tensor.max() - mfcc_tensor.min() + 1e-8)
+            
+            # RGB-Kanäle erstellen
+            red_channel = torch.pow(normalized_mfcc, 0.7)  # Rot für hohe Intensitäten
+            green_channel = torch.sin(normalized_mfcc * 3.14)  # Grün für mittlere Intensitäten
+            blue_channel = 1.0 - torch.pow(normalized_mfcc, 2)  # Blau für niedrige Intensitäten
+            
+            # Zu 3-Kanal-Bild kombinieren
+            feat = torch.cat([red_channel, green_channel, blue_channel], dim=0)
         else:
-            # Einfache Lösung: Verwende den Mittelwert über alle Kanäle
-            feat = (feat - self.global_mean) / self.global_std
+            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                            sr=config.sr,
+                                            n_mels=config.n_mels,
+                                            n_fft=1024,
+                                            hop_length=config.hop_length)
+            log_s = librosa.power_to_db(s, ref=np.max)
 
-    return file_name, feat, class_id
+            # Spektrogramm in einen Tensor umwandeln und ausmaskieren
+            log_s_tensor = self.spec_transforms(log_s)
+            
+            # Normalisieren für Farbdarstellung
+            normalized_s = (log_s_tensor - log_s_tensor.min()) / (log_s_tensor.max() - log_s_tensor.min() + 1e-8)
+            
+            # RGB-Kanäle erstellen
+            red_channel = torch.pow(normalized_s, 0.7)  # Verstärkt hohe Werte (helle Bereiche)
+            green_channel = torch.sin(normalized_s * 3.14)  # Betont mittlere Werte
+            blue_channel = 1.0 - torch.pow(normalized_s, 2)  # Betont niedrige Werte
+            
+            # Zu 3-Kanal-Bild kombinieren
+            feat = torch.cat([red_channel, green_channel, blue_channel], dim=0)
+
+        # normalize
+        if self.global_mean:
+            # Bei 3-Kanal-Bildern müssen wir über die Kanäle individuell normalisieren
+            # Da global_mean/global_std für 1-Kanal konzipiert wurde, wenden wir es auf jeden Kanal an
+            if isinstance(self.global_mean, np.ndarray) and self.global_mean.ndim == 0:
+                feat = (feat - self.global_mean) / self.global_std
+            else:
+                # Einfache Lösung: Verwende den Mittelwert über alle Kanäle
+                feat = (feat - self.global_mean) / self.global_std
+
+        return file_name, feat, class_id
 
 
 def get_global_stats(data_path):
