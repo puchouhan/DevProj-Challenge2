@@ -150,6 +150,7 @@ class ESC50(data.Dataset):
         wave_copy = np.copy(wave)
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
+        self.cache[file_name] = (file_name, class_id)
 
         if self.n_mfcc:
             mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
@@ -169,37 +170,27 @@ class ESC50(data.Dataset):
             log_s = self.spec_transforms(log_s)
             feat = log_s
 
-        # Enforce correct number of channels based on config
-        if config.num_channels == 1:
-            feat = feat if feat.ndim == 3 else feat.unsqueeze(0)
-        elif config.num_channels == 3:
-            # Anstatt einfach den gleichen Kanal zu duplizieren, erstellen wir ein echtes RGB-Bild
-            if feat.ndim == 2:
-                # Normalisieren für bessere Farbdarstellung
-                feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
+        if feat.ndim == 2:
+            feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
-                # RGB-Kanäle erstellen
-                n_freqs = feat_norm.shape[0]
-                rgb_tensor = np.zeros((3, n_freqs, feat_norm.shape[1]), dtype=np.float32)
+            n_freqs = feat_norm.shape[0]
+            rgb_tensor = np.zeros((3, n_freqs, feat_norm.shape[1]), dtype=np.float32)
 
-                # Frequenzbereiche auf RGB-Kanäle aufteilen
-                freq_ranges = [
-                    (0, n_freqs // 3),  # Niedrig -> Rot
-                    (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
-                    (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
-                ]
+            freq_ranges = [
+                (0, n_freqs // 3),  # Niedrig -> Rot
+                (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
+                (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
+            ]
 
-                for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-                    rgb_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
+            for channel, (start_freq, end_freq) in enumerate(freq_ranges):
+                rgb_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
 
-                feat = torch.tensor(rgb_tensor, dtype=torch.float)
-            else:
-                # Falls feat bereits ein 3D-Tensor ist, einfach expandieren
-                feat = feat.expand(3, -1, -1)
+            feat = torch.tensor(rgb_tensor, dtype=torch.float)
         else:
-            raise ValueError(f"Unsupported number of channels: {config.num_channels}")
+            # Falls feat bereits ein 3D-Tensor ist, einfach expandieren
+            feat = feat.expand(3, -1, -1)
 
-        self.cache[file_name] = (file_name, feat, class_id)
+
         return file_name, feat, class_id
 
 
