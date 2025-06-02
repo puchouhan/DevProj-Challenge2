@@ -177,16 +177,15 @@ class ESC50(data.Dataset):
             log_s = self.spec_transforms(log_s)
 
             feat = log_s
-            # Anstatt einfach den gleichen Kanal zu duplizieren, erstellen wir ein echtes RGB-Bild
+            # erstelle echtes RGB-Bild
             if feat.ndim == 2:
-                # Normalisieren für bessere Farbdarstellung
+                # normalisiern auf den bereich 0-1
                 feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
                 # RGB-Kanäle erstellen
                 n_freqs = feat_norm.shape[0]
                 rgb_tensor = np.zeros((3, n_freqs, feat_norm.shape[1]), dtype=np.float32)
 
-                # Frequenzbereiche auf RGB-Kanäle aufteilen
                 freq_ranges = [
                     (0, n_freqs // 3),  # Niedrig -> Rot
                     (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
@@ -198,7 +197,6 @@ class ESC50(data.Dataset):
 
                 feat = torch.tensor(rgb_tensor, dtype=torch.float)
             else:
-                # Falls feat bereits ein 3D-Tensor ist, einfach expandieren
                 feat = feat.expand(3, -1, -1)
 
         # normalize
