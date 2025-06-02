@@ -246,9 +246,12 @@ if __name__ == "__main__":
                 weight_decay=config.weight_decay
             )
 
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
-                                                        step_size=config.step_size,
-                                                        gamma=config.gamma)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+               optimizer,
+               T_0=25,  # Länge des ersten Zyklus (in Epochen)
+               T_mult=2,  # Faktor, mit dem sich die Zykluslänge multipliziert
+               eta_min=config.lr * 0.01  # Minimale LR
+            )
 
             # fit the model using only training and validation data, no testing data allowed here
             print()
