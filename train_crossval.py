@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import os
 import datetime
+import time
 from tqdm import tqdm
 import sys
 from functools import partial
@@ -24,6 +25,12 @@ global_stats = np.array([[-54.364834, 20.853344],
                          [-54.18343, 20.80387],
                          [-54.223698, 20.798292],
                          [-54.200905, 20.949806]])
+
+# Funktion, um Sekunden in Min:Sek-Format umzuwandeln
+def format_time(seconds):
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes:02d}:{seconds:02d}"
 
 # evaluate model on different testing data 'dataloader'
 def test(model, dataloader, criterion, device):
@@ -177,6 +184,8 @@ def make_model():
 
 
 if __name__ == "__main__":
+        # Startzeit messen
+    start_time = time.time()
     data_path = config.esc50_path
     use_cuda = torch.cuda.is_available()
     device = torch.device(f"cuda:{config.device_id}" if use_cuda else "cpu")
@@ -273,3 +282,11 @@ if __name__ == "__main__":
             print()
     scores = pd.concat(scores).unstack([-1])
     print(pd.concat((scores, scores.agg(['mean', 'std']))))
+    
+    # Endzeit messen und Gesamtlaufzeit berechnen
+    end_time = time.time()
+    total_time = end_time - start_time
+    
+    print("\n" + "="*50)
+    print(f"GESAMTLAUFZEIT: {format_time(total_time)} (Min:Sek)")
+    print("="*50)
