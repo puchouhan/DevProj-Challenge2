@@ -155,30 +155,56 @@ class ESC50(data.Dataset):
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
 
-        if self.n_mfcc:
-            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
-                                        sr=config.sr,
-                                        n_mels=config.n_mels,
-                                        n_fft=1024,
-                                        hop_length=config.hop_length,
-                                        n_mfcc=self.n_mfcc)
-            feat = mfcc
-        else:
-            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                               sr=config.sr,
-                                               n_mels=config.n_mels,
-                                               n_fft=1024,
-                                               hop_length=config.hop_length,
-                                               #center=False,
-                                               )
-            log_s = librosa.power_to_db(s, ref=np.max)
+        # Standard-Mel-Spektrogramm (wie bisher)
+        s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                           sr=config.sr,
+                                           n_mels=config.n_mels,
+                                           n_fft=1024,
+                                           hop_length=config.hop_length)
+        log_s = librosa.power_to_db(s, ref=np.max)
 
-            # masking the spectrograms
-            log_s = self.spec_transforms(log_s)
+        # Masking auf dem Spektrogramm anwenden (wie bisher)
+        log_s_tensor = self.spec_transforms(log_s)
 
-            feat = log_s
+        # Zweiter Kanal: MFCC-Koeffizienten
+        mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
+                                    sr=config.sr,
+                                    n_mfcc=config.n_mels,  # Gleiche Größe wie Mel-Spektrogramm
+                                    n_fft=1024,
+                                    hop_length=config.hop_length)
+        # Normalisierung der MFCC-Werte
+        mfcc_normalized = (mfcc - np.mean(mfcc)) / (np.std(mfcc) + 1e-9)
+        mfcc_tensor = torch.tensor(mfcc_normalized, dtype=torch.float).unsqueeze(0)
 
-        # normalize
+        # Dritter Kanal: Spektraler Kontrast
+        contrast = librosa.feature.spectral_contrast(y=wave_copy.numpy(),
+                                                     sr=config.sr,
+                                                     n_bands=config.n_mels // 4,  # Weniger Bänder als Mel-Bins
+                                                     hop_length=config.hop_length)
+
+        # Größenanpassung durch Interpolation
+        contrast_resized = np.zeros((config.n_mels, contrast.shape[1]))
+        for i in range(contrast.shape[1]):
+            contrast_resized[:, i] = np.interp(
+                np.linspace(0, 1, config.n_mels),
+                np.linspace(0, 1, contrast.shape[0]),
+                contrast[:, i]
+            )
+
+        # Normalisierung des Kontrasts
+        contrast_normalized = (contrast_resized - np.mean(contrast_resized)) / (np.std(contrast_resized) + 1e-9)
+        contrast_tensor = torch.tensor(contrast_normalized, dtype=torch.float).unsqueeze(0)
+
+        # Stellen Sie sicher, dass alle drei Kanäle die gleiche Größe haben
+        time_dim = min(log_s_tensor.size(2), mfcc_tensor.size(2), contrast_tensor.size(2))
+        log_s_tensor = log_s_tensor[:, :, :time_dim]
+        mfcc_tensor = mfcc_tensor[:, :, :time_dim]
+        contrast_tensor = contrast_tensor[:, :, :time_dim]
+
+        # Zusammenführen der drei Kanäle
+        feat = torch.cat([log_s_tensor, mfcc_tensor, contrast_tensor], dim=0)
+
+        # Normalisierung, falls globale Statistiken vorhanden sind
         if self.global_mean:
             feat = (feat - self.global_mean) / self.global_std
 
