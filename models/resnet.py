@@ -159,7 +159,7 @@ class ResNetAudio(nn.Module):
 
 
 # Helper functions to create specific ResNetAudio models
-def resnet18_audio(num_classes=50, input_channels=4):
+def resnet18_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-18 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
@@ -167,14 +167,14 @@ def resnet18_audio(num_classes=50, input_channels=4):
                       input_channels=input_channels, dropout_rate=dropout_rate)
 
 
-def resnet34_audio(num_classes=50, input_channels=4):
+def resnet34_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-34 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
     return ResNetAudio(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, 
                       input_channels=input_channels, dropout_rate=dropout_rate)
 
-def resnet14_audio(num_classes=50, input_channels=4):
+def resnet14_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-14 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
