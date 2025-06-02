@@ -92,7 +92,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNetAudio(nn.Module):
-    def __init__(self, block, layers, num_classes=50, input_channels=1, dropout_rate=None):
+    def __init__(self, block, layers, num_classes=50, input_channels=3, dropout_rate=None):
         super(ResNetAudio, self).__init__()
         self.in_planes = 64
         self.dropout_rate = dropout_rate
@@ -159,7 +159,7 @@ class ResNetAudio(nn.Module):
 
 
 # Helper functions to create specific ResNetAudio models
-def resnet18_audio(num_classes=50, input_channels=1):
+def resnet18_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-18 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
@@ -167,35 +167,35 @@ def resnet18_audio(num_classes=50, input_channels=1):
                       input_channels=input_channels, dropout_rate=dropout_rate)
 
 
-def resnet34_audio(num_classes=50, input_channels=1):
+def resnet34_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-34 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
     return ResNetAudio(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, 
                       input_channels=input_channels, dropout_rate=dropout_rate)
 
-def resnet14_audio(num_classes=50, input_channels=1):
+def resnet14_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-14 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
     return ResNetAudio(BasicBlock, [2, 2, 1, 1], num_classes=num_classes, 
                       input_channels=input_channels, dropout_rate=dropout_rate)
 
-def resnet50_audio(num_classes=50, input_channels=1):
+def resnet50_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-50 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
     return ResNetAudio(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, 
                       input_channels=input_channels, dropout_rate=dropout_rate)
 
-def resnet101_audio(num_classes=50, input_channels=1):
+def resnet101_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-101 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
     return ResNetAudio(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, 
                       input_channels=input_channels, dropout_rate=dropout_rate)
 
-def resnet152_audio(num_classes=50, input_channels=1):
+def resnet152_audio(num_classes=50, input_channels=3):
     """Constructs a ResNet-152 model for audio."""
     import config
     dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
