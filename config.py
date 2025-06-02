@@ -26,10 +26,10 @@ hop_length = 512
 # output_size=config.n_classes,\
 # time_reduce=1)"
 
-model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
+#model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
 #model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
 #model_constructor = "resnet.resnet34_audio(num_classes=config.n_classes)"
-#model_constructor = "cnn.cnn_small_audio(num_classes=config.n_classes)"
+model_constructor = "cnn.cnn_small_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_medium_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_large_audio(num_classes=config.n_classes)"
 
@@ -45,12 +45,12 @@ num_workers = 4
 # num_workers = 6#16
 persistent_workers = True
 #persistent_workers = False
-epochs = 250
+epochs = 50
 #epochs = 1
 # early stopping after epochs with no improvement
 patience = 20
 lr = 5.5e-4
-weight_decay = 1e-2
+weight_decay = 1e-4
 beta1 = 0.9  # AdamW Beta1 Parameter
 beta2 = 0.999  # AdamW Beta2 Parameter
 eps = 1e-8   # AdamW Epsilon
@@ -58,6 +58,11 @@ warm_epochs = 15
 dropout_rate = 0.2
 gamma = 0.8
 step_size = 3
+
+lr_scheduler = "cosine"  # Optionen: "step", "cosine", "cosine_warm_restarts"
+lr_min_factor = 0.01  # Minimale LR = Ausgangs-LR * lr_min_factor
+cosine_cycle_epochs = 10  # Für CosineAnnealingWarmRestarts
+cosine_cycle_mult = 2  # Für CosineAnnealingWarmRestarts
 
 # ### TESTING
 # model checkpoints loaded for testing
