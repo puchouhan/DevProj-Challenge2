@@ -162,19 +162,7 @@ class ESC50(data.Dataset):
                                         n_fft=1024,
                                         hop_length=config.hop_length,
                                         n_mfcc=self.n_mfcc)
-            # Wandle MFCC zu RGB-Bild um
-            normalized_mfcc = (mfcc - mfcc.min()) / (mfcc.max() - mfcc.min())
-            
-            # Erstelle drei Farbkanäle
-            red_channel = torch.pow(torch.tensor(normalized_mfcc), 0.7)
-            green_channel = torch.sin(torch.tensor(normalized_mfcc) * 3.14)
-            blue_channel = 1.0 - torch.pow(torch.tensor(normalized_mfcc), 2)
-            
-            feat = torch.cat([
-                self.spec_transforms(red_channel),
-                self.spec_transforms(green_channel),
-                self.spec_transforms(blue_channel)
-            ], dim=0)
+            feat = mfcc
         else:
             s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
                                                sr=config.sr,
@@ -184,29 +172,11 @@ class ESC50(data.Dataset):
                                                #center=False,
                                                )
             log_s = librosa.power_to_db(s, ref=np.max)
-            
-            # Erstelle drei unterschiedliche Farbkanäle aus dem Spektrogramm
-            log_s_tensor = self.spec_transforms(log_s)
-            
-            # Normalisiere auf Werte zwischen 0 und 1 für die Farbabbildung
-            normalized_s = (log_s_tensor - log_s_tensor.min()) / (log_s_tensor.max() - log_s_tensor.min())
-            
-            # Kanal 1: Jet-Farbabbildung (ähnlich der Standard-Spektrogramm-Darstellung)
-            # Rot für hohe Intensitäten
-            red_channel = torch.pow(normalized_s, 0.7)  # Gamma-Korrektur für Rot
-            
-            # Kanal 2: Grün für mittlere Intensitäten
-            green_channel = torch.sin(normalized_s * 3.14)  # Sinuskurve verstärkt mittlere Werte
-            
-            # Kanal 3: Blau für niedrigere Intensitäten
-            blue_channel = 1.0 - torch.pow(normalized_s, 2)  # Invertiert und quadriert
-            
-            # Kombiniere zu RGB (3-Kanal)
-            feat = torch.cat([
-                red_channel,
-                green_channel,
-                blue_channel
-            ], dim=0)
+
+            # masking the spectrograms
+            log_s = self.spec_transforms(log_s)
+
+            feat = log_s
 
         # normalize
         if self.global_mean:
