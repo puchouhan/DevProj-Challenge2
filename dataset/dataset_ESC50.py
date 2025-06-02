@@ -155,30 +155,49 @@ class ESC50(data.Dataset):
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
 
-        if self.n_mfcc:
-            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
-                                        sr=config.sr,
-                                        n_mels=config.n_mels,
-                                        n_fft=1024,
-                                        hop_length=config.hop_length,
-                                        n_mfcc=self.n_mfcc)
-            feat = mfcc
-        else:
-            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                               sr=config.sr,
-                                               n_mels=config.n_mels,
-                                               n_fft=1024,
-                                               hop_length=config.hop_length,
-                                               #center=False,
-                                               )
-            log_s = librosa.power_to_db(s, ref=np.max)
+        # Mel-Spektrogramm berechnen
+        s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                           sr=config.sr,
+                                           n_mels=config.n_mels,
+                                           n_fft=1024,
+                                           hop_length=config.hop_length)
 
-            # masking the spectrograms
-            log_s = self.spec_transforms(log_s)
+        # In dB umwandeln
+        log_s = librosa.power_to_db(s, ref=np.max)
 
-            feat = log_s
+        # Normalisierung auf [0, 1] für die Farbzuordnung
+        log_s_norm = (log_s - log_s.min()) / (log_s.max() - log_s.min() + 1e-9)
 
-        # normalize
+        # Erstellen eines RGB-Bildes aus dem Spektrogramm
+        # Der niedrigere Frequenzbereich wird rot, der mittlere grün und der höhere blau dargestellt
+        n_freqs = log_s_norm.shape[0]
+        freq_ranges = [
+            (0, n_freqs // 3),  # Niedriger Frequenzbereich (Rot)
+            (n_freqs // 3, 2 * n_freqs // 3),  # Mittlerer Frequenzbereich (Grün)
+            (2 * n_freqs // 3, n_freqs)  # Hoher Frequenzbereich (Blau)
+        ]
+
+        # Initialisierung der RGB-Kanäle
+        rgb_image = np.zeros((3, n_freqs, log_s_norm.shape[1]), dtype=np.float32)
+
+        # Frequenzbereiche den RGB-Kanälen zuordnen
+        for channel, (start_freq, end_freq) in enumerate(freq_ranges):
+            # Der jeweilige Frequenzbereich wird im entsprechenden Kanal intensiver dargestellt
+            rgb_image[channel, start_freq:end_freq, :] = log_s_norm[start_freq:end_freq, :]
+
+        # In PyTorch-Tensor umwandeln
+        feat = torch.from_numpy(rgb_image)
+
+        # Masking auf dem RGB-Bild anwenden (falls im Trainingsmodus)
+        if self.subset == "train":
+            # Anwendung der Transformationen für jede Schicht einzeln
+            for i in range(3):
+                channel = feat[i:i + 1]
+                # Wir wenden die Maskierung nur auf den jeweiligen Kanal an
+                channel = self.spec_transforms(channel.squeeze(0)).unsqueeze(0)
+                feat[i:i + 1] = channel
+
+        # Normalisierung, falls globale Statistiken vorhanden sind
         if self.global_mean:
             feat = (feat - self.global_mean) / self.global_std
 
