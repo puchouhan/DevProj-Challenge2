@@ -1,203 +1,295 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import dataloader
+import pandas as pd
+import numpy as np
+import os
+import datetime
+import time
+from tqdm import tqdm
+import sys
+from functools import partial
+
+from models.model_classifier import AudioMLP
+from models import resnet
+
+from models.utils import EarlyStopping, Tee
+from dataset.dataset_ESC50 import ESC50
+import config
+
+# mean and std of train data for every fold
+global_stats = np.array([[-54.364834, 20.853344],
+                         [-54.279022, 20.847532],
+                         [-54.18343, 20.80387],
+                         [-54.223698, 20.798292],
+                         [-54.200905, 20.949806]])
 
 
-def conv3x3(in_planes, out_planes, stride=1):
-    """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=False)
+# Funktion, um Sekunden in Min:Sek-Format umzuwandeln
+def format_time(seconds):
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes:02d}:{seconds:02d}"
 
 
-def conv1x1(in_planes, out_planes, stride=1):
-    """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+# evaluate model on different testing data 'dataloader'
+def test(model, dataloader, criterion, device):
+    model.eval()
+
+    losses = []
+    corrects = 0
+    samples_count = 0
+    probs = {}
+    with torch.no_grad():
+        # no gradient computation needed
+        for k, x, label in tqdm(dataloader, unit='bat', disable=config.disable_bat_pbar, position=0):
+            x = x.float().to(device)
+            y_true = label.to(device)
+
+            # the forward pass through the model
+            y_prob = model(x)
+
+            loss = criterion(y_prob, y_true)
+            losses.append(loss.item())
+
+            y_pred = torch.argmax(y_prob, dim=1)
+            corrects += (y_pred == y_true).sum().item()
+            samples_count += y_true.shape[0]
+            for w, p in zip(k, y_prob):
+                probs[w] = [float(v) for v in p]
+
+    acc = corrects / samples_count
+    return acc, losses, probs
 
 
-class BasicBlock(nn.Module):
-    expansion = 1
+def train_epoch():
+    # switch to training
+    model.train()
 
-    def __init__(self, in_planes, planes, stride=1, downsample=None, dropout_rate=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(in_planes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout2d(p=dropout_rate) if dropout_rate else nn.Identity()
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
-        self.stride = stride
+    losses = []
+    corrects = 0
+    samples_count = 0
+    for _, x, label in tqdm(train_loader, unit='bat', disable=config.disable_bat_pbar, position=0):
+        x = x.float().to(device)
+        y_true = label.to(device)
 
-    def forward(self, x):
-        identity = x
+        # the forward pass through the model
+        y_prob = model(x)
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-        out = self.dropout(out)
+        # we could also use 'F.one_hot(y_true)' for 'y_true', but this would be slower
+        loss = criterion(y_prob, y_true)
+        # reset the gradients to zero - avoids accumulation
+        optimizer.zero_grad()
+        # compute the gradient with backpropagation
+        loss.backward()
+        losses.append(loss.item())
+        # minimize the loss via the gradient - adapts the model parameters
+        optimizer.step()
 
-        out = self.conv2(out)
-        out = self.bn2(out)
+        y_pred = torch.argmax(y_prob, dim=1)
+        corrects += (y_pred == y_true).sum().item()
+        samples_count += y_true.shape[0]
 
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        out = self.relu(out)
-
-        return out
+    acc = corrects / samples_count
+    return acc, losses
 
 
-class Bottleneck(nn.Module):
-    # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
-    # while original implementation places the stride at the first 1x1 convolution(self.conv1)
-    # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
-    expansion = 4
+def print_training_parameters():
+    """Gibt alle wichtigen Trainingsparameter in der Konsole aus."""
+    print("\n" + "=" * 50)
+    print("TRAININGSPARAMETER:")
+    print("=" * 50)
 
-    def __init__(self, in_planes, planes, stride=1, downsample=None, dropout_rate=None):
-        super(Bottleneck, self).__init__()
-        self.conv1 = conv1x1(in_planes, planes)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = conv3x3(planes, planes, stride)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.dropout = nn.Dropout2d(p=dropout_rate) if dropout_rate else nn.Identity()
-        self.conv3 = conv1x1(planes, planes * self.expansion)
-        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
-        self.relu = nn.ReLU(inplace=True)
-        self.downsample = downsample
-        self.stride = stride
+    print("\nMODELL:")
+    print(f"- Model: {config.model_constructor}")
+    print(f"- Dropout Rate: {config.dropout_rate if hasattr(config, 'dropout_rate') else 'None'}")
 
-    def forward(self, x):
-        identity = x
+    print("\nDATENREPRÄSENTATION:")
+    print(f"- Sampling Rate: {config.sr}")
+    print(f"- Mel Filter: {config.n_mels}")
+    print(f"- Hop Length: {config.hop_length}")
+    print(f"- MFCC: {config.n_mfcc if hasattr(config, 'n_mfcc') else 'None'}")
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
+    print("\nTRAININGSKONFIGURATION:")
+    print(f"- Validierungs-Anteil: {config.val_size}")
+    print(f"- Batch Size: {config.batch_size}")
+    print(f"- Epochs: {config.epochs}")
+    print(f"- Early Stopping Patience: {config.patience}")
+    print(f"- Device: {device}")
 
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
-        out = self.dropout(out)
+    print("\nOPTIMIERUNG:")
+    print(f"- Learning Rate: {config.lr}")
+    print(f"- Weight Decay: {config.weight_decay}")
+    print(f"- Warm-Up Epochs: {config.warm_epochs}")
+    print(f"- LR Gamma: {config.gamma}")
+    print(f"- LR Step Size: {config.step_size}")
 
-        out = self.conv3(out)
-        out = self.bn3(out)
+    print("\nDATENAUGMENTATION:")
+    print(f"- Random Noise: min={0.001}, max={0.005}")
+    print(f"- Random Scale: max_scale={1.15}")
+    print(f"- Frequency Mask: width={16}, numbers={3}")
+    print(f"- Time Mask: width={20}, numbers={3}")
 
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        out = self.relu(out)
-
-        return out
+    print("=" * 50 + "\n")
 
 
-class ResNetAudio(nn.Module):
-    def __init__(self, block, layers, num_classes=50, input_channels=3, dropout_rate=None):
-        super(ResNetAudio, self).__init__()
-        self.in_planes = 64
-        self.dropout_rate = dropout_rate
+def fit_classifier():
+    print_training_parameters()
 
-        # Input layer: Conv2d for single-channel spectrogram
-        # Spectrograms are (batch, 1, n_mels, n_steps)
-        # n_mels is height, n_steps is width
-        self.conv1 = nn.Conv2d(input_channels, self.in_planes, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = nn.BatchNorm2d(self.in_planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+    num_epochs = config.epochs
 
-        self.layer1 = self._make_layer(block, 64, layers[0], dropout_rate=dropout_rate)
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dropout_rate=dropout_rate)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dropout_rate=dropout_rate)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dropout_rate=dropout_rate)
+    loss_stopping = EarlyStopping(patience=config.patience, delta=0.002, verbose=True, float_fmt=float_fmt,
+                                  checkpoint_file=os.path.join(experiment, 'best_val_loss.pt'))
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(p=dropout_rate) if dropout_rate else nn.Identity()
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+    pbar = tqdm(range(1, 1 + num_epochs), ncols=50, unit='ep', file=sys.stdout, ascii=True)
+    for epoch in (range(1, 1 + num_epochs)):
+        # iterate once over training data
+        train_acc, train_loss = train_epoch()
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+        # validate model
+        val_acc, val_loss, _ = test(model, val_loader, criterion=criterion, device=device)
+        val_loss_avg = np.mean(val_loss)
 
-    def _make_layer(self, block, planes, num_blocks, stride=1, dropout_rate=None):
-        downsample = None
-        if stride != 1 or self.in_planes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.in_planes, planes * block.expansion, stride),
-                nn.BatchNorm2d(planes * block.expansion),
+        # print('\n')
+        pbar.update()
+        # pbar.refresh() syncs output when pbar on stderr
+        # pbar.refresh()
+        print(end=' ')
+        print(  # f" Epoch: {epoch}/{num_epochs}",
+            f"TrnAcc={train_acc:{float_fmt}}",
+            f"ValAcc={val_acc:{float_fmt}}",
+            f"TrnLoss={np.mean(train_loss):{float_fmt}}",
+            f"ValLoss={val_loss_avg:{float_fmt}}",
+            end=' ')
+
+        early_stop, improved = loss_stopping(val_loss_avg, model, epoch)
+        if not improved:
+            print()
+        if early_stop:
+            print("Early stopping")
+            break
+
+        # advance the optimization scheduler
+        scheduler.step()
+    # save full model
+    torch.save(model.state_dict(), os.path.join(experiment, 'terminal.pt'))
+
+
+# build model from configuration.
+def make_model():
+    n = config.n_classes
+    model_constructor = config.model_constructor
+    print(model_constructor)
+    model = eval(model_constructor)
+    return model
+
+
+if __name__ == "__main__":
+    # Startzeit messen
+    start_time = time.time()
+    data_path = config.esc50_path
+    use_cuda = torch.cuda.is_available()
+    device = torch.device(f"cuda:{config.device_id}" if use_cuda else "cpu")
+
+    # digits for logging
+    float_fmt = ".3f"
+    pd.options.display.float_format = ('{:,' + float_fmt + '}').format
+    runs_path = config.runs_path
+    experiment_root = os.path.join(runs_path, str(datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')))
+    os.makedirs(experiment_root, exist_ok=True)
+
+    # for all folds
+    scores = {}
+    # expensive!
+    # global_stats = get_global_stats(data_path)
+    # for spectrograms
+    print("WARNING: Using hardcoded global mean and std. Depends on feature settings!")
+    for test_fold in config.test_folds:
+        experiment = os.path.join(experiment_root, f'{test_fold}')
+        if not os.path.exists(experiment):
+            os.mkdir(experiment)
+
+        # clone stdout to file (does not include stderr). If used may confuse linux 'tee' command.
+        with Tee(os.path.join(experiment, 'train.log'), 'w', 1, encoding='utf-8',
+                 newline='\n', proc_cr=True):
+            # this function assures consistent 'test_folds' setting for train, val, test splits
+            get_fold_dataset = partial(ESC50, root=data_path, download=True,
+                                       test_folds={test_fold}, global_mean_std=global_stats[test_fold - 1])
+
+            train_set = get_fold_dataset(subset="train")
+            print('*****')
+            print(f'train folds are {train_set.train_folds} and test fold is {train_set.test_folds}')
+            print('random wave cropping')
+
+            train_loader = torch.utils.data.DataLoader(train_set,
+                                                       batch_size=config.batch_size,
+                                                       shuffle=True,
+                                                       num_workers=config.num_workers,
+                                                       drop_last=False,
+                                                       persistent_workers=config.persistent_workers,
+                                                       pin_memory=True,
+                                                       )
+
+            val_loader = torch.utils.data.DataLoader(get_fold_dataset(subset="val"),
+                                                     batch_size=config.batch_size,
+                                                     shuffle=False,
+                                                     num_workers=config.num_workers,
+                                                     drop_last=False,
+                                                     persistent_workers=config.persistent_workers,
+                                                     )
+
+            print()
+            # instantiate model
+            model = make_model()
+            # model = nn.DataParallel(model, device_ids=config.device_ids)
+            model = model.to(device)
+            print('*****')
+
+            # Define a loss function and optimizer
+            criterion = nn.CrossEntropyLoss().to(device)
+
+            optimizer = torch.optim.AdamW(
+                model.parameters(),
+                lr=config.lr,
+                betas=(config.beta1, config.beta2) if hasattr(config, 'beta1') and hasattr(config, 'beta2') else (0.9,
+                                                                                                                  0.999),
+                eps=config.eps if hasattr(config, 'eps') else 1e-8,
+                weight_decay=config.weight_decay
             )
 
-        layers_list = []
-        layers_list.append(block(self.in_planes, planes, stride, downsample, dropout_rate))
-        self.in_planes = planes * block.expansion
-        for _ in range(1, num_blocks):
-            layers_list.append(block(self.in_planes, planes, dropout_rate=dropout_rate))
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=25,  # Länge des ersten Zyklus (in Epochen)
+                T_mult=2,  # Faktor, mit dem sich die Zykluslänge multipliziert
+                eta_min=config.lr * 0.01  # Minimale LR
+            )
 
-        return nn.Sequential(*layers_list)
+            # fit the model using only training and validation data, no testing data allowed here
+            print()
+            fit_classifier()
 
-    def forward(self, x):
-        # x is expected to be (batch_size, 1, n_mels, n_steps)
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
+            # tests
+            test_loader = torch.utils.data.DataLoader(get_fold_dataset(subset="test"),
+                                                      batch_size=config.batch_size,
+                                                      shuffle=False,
+                                                      num_workers=0,  # config.num_workers,
+                                                      drop_last=False,
+                                                      )
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+            print(f'\ntest {experiment}')
+            test_acc, test_loss, _ = test(model, test_loader, criterion=criterion, device=device)
+            scores[test_fold] = pd.Series(dict(TestAcc=test_acc, TestLoss=np.mean(test_loss)))
+            print(scores[test_fold])
+            # print(scores[test_fold].unstack())
+            print()
+    scores = pd.concat(scores).unstack([-1])
+    print(pd.concat((scores, scores.agg(['mean', 'std']))))
 
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.dropout(x)
-        x = self.fc(x)
+    # Endzeit messen und Gesamtlaufzeit berechnen
+    end_time = time.time()
+    total_time = end_time - start_time
 
-        return x
-
-
-# Helper functions to create specific ResNetAudio models
-def resnet18_audio(num_classes=50, input_channels=1):
-    """Constructs a ResNet-18 model for audio."""
-    import config
-    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
-    return ResNetAudio(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, 
-                      input_channels=input_channels, dropout_rate=dropout_rate)
-
-
-def resnet34_audio(num_classes=50, input_channels=1):
-    """Constructs a ResNet-34 model for audio."""
-    import config
-    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
-    return ResNetAudio(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, 
-                      input_channels=input_channels, dropout_rate=dropout_rate)
-
-def resnet14_audio(num_classes=50, input_channels=3):
-    """Constructs a ResNet-14 model for audio."""
-    import config
-    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
-    return ResNetAudio(BasicBlock, [2, 2, 1, 1], num_classes=num_classes, 
-                      input_channels=input_channels, dropout_rate=dropout_rate)
-
-def resnet50_audio(num_classes=50, input_channels=3):
-    """Constructs a ResNet-50 model for audio."""
-    import config
-    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
-    return ResNetAudio(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, 
-                      input_channels=input_channels, dropout_rate=dropout_rate)
-
-def resnet101_audio(num_classes=50, input_channels=3):
-    """Constructs a ResNet-101 model for audio."""
-    import config
-    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
-    return ResNetAudio(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, 
-                      input_channels=input_channels, dropout_rate=dropout_rate)
-
-def resnet152_audio(num_classes=50, input_channels=3):
-    """Constructs a ResNet-152 model for audio."""
-    import config
-    dropout_rate = config.dropout_rate if hasattr(config, 'dropout_rate') else None
-    return ResNetAudio(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, 
-                      input_channels=input_channels, dropout_rate=dropout_rate)
+    print("\n" + "=" * 50)
+    print(f"GESAMTLAUFZEIT: {format_time(total_time)} (Min:Sek)")
+    print("=" * 50)

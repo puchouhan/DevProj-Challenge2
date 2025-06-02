@@ -195,7 +195,7 @@ class ESC50(data.Dataset):
         contrast_normalized = (contrast_resized - np.mean(contrast_resized)) / (np.std(contrast_resized) + 1e-9)
         contrast_tensor = torch.tensor(contrast_normalized, dtype=torch.float).unsqueeze(0)
 
-        # Stellen Sie sicher, dass alle drei Kanäle die gleiche Größe haben
+        # Stelle sicher, dass alle drei Kanäle die gleiche Größe haben
         time_dim = min(log_s_tensor.size(2), mfcc_tensor.size(2), contrast_tensor.size(2))
         log_s_tensor = log_s_tensor[:, :, :time_dim]
         mfcc_tensor = mfcc_tensor[:, :, :time_dim]
