@@ -155,60 +155,55 @@ class ESC50(data.Dataset):
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
 
-        # Standard-Mel-Spektrogramm (wie bisher)
+        # Mel-Spektrogramm berechnen
         s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
                                            sr=config.sr,
                                            n_mels=config.n_mels,
                                            n_fft=1024,
                                            hop_length=config.hop_length)
+
+        # In dB umwandeln
         log_s = librosa.power_to_db(s, ref=np.max)
 
-        # Masking auf dem Spektrogramm anwenden (wie bisher)
-        log_s_tensor = self.spec_transforms(log_s)
+        # Normalisierung auf [0, 1] für die Farbzuordnung
+        log_s_norm = (log_s - log_s.min()) / (log_s.max() - log_s.min() + 1e-9)
 
-        # Zweiter Kanal: MFCC-Koeffizienten
-        mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
-                                    sr=config.sr,
-                                    n_mfcc=config.n_mels,  # Gleiche Größe wie Mel-Spektrogramm
-                                    n_fft=1024,
-                                    hop_length=config.hop_length)
-        # Normalisierung der MFCC-Werte
-        mfcc_normalized = (mfcc - np.mean(mfcc)) / (np.std(mfcc) + 1e-9)
-        mfcc_tensor = torch.tensor(mfcc_normalized, dtype=torch.float).unsqueeze(0)
+        # Erstellen eines RGB-Bildes aus dem Spektrogramm
+        # Wir verwenden eine Farbkarte ähnlich wie bei der Spektrogramm-Visualisierung
+        # Der niedrigere Frequenzbereich wird rot, der mittlere grün und der höhere blau dargestellt
 
-        # Dritter Kanal: Spektraler Kontrast
-        contrast = librosa.feature.spectral_contrast(y=wave_copy.numpy(),
-                                                     sr=config.sr,
-                                                     n_bands=config.n_mels // 4,  # Weniger Bänder als Mel-Bins
-                                                     hop_length=config.hop_length)
+        n_freqs = log_s_norm.shape[0]
+        freq_ranges = [
+            (0, n_freqs // 3),  # Niedriger Frequenzbereich (Rot)
+            (n_freqs // 3, 2 * n_freqs // 3),  # Mittlerer Frequenzbereich (Grün)
+            (2 * n_freqs // 3, n_freqs)  # Hoher Frequenzbereich (Blau)
+        ]
 
-        # Größenanpassung durch Interpolation
-        contrast_resized = np.zeros((config.n_mels, contrast.shape[1]))
-        for i in range(contrast.shape[1]):
-            contrast_resized[:, i] = np.interp(
-                np.linspace(0, 1, config.n_mels),
-                np.linspace(0, 1, contrast.shape[0]),
-                contrast[:, i]
-            )
+        # Initialisierung der RGB-Kanäle
+        rgb_image = np.zeros((3, n_freqs, log_s_norm.shape[1]), dtype=np.float32)
 
-        # Normalisierung des Kontrasts
-        contrast_normalized = (contrast_resized - np.mean(contrast_resized)) / (np.std(contrast_resized) + 1e-9)
-        contrast_tensor = torch.tensor(contrast_normalized, dtype=torch.float).unsqueeze(0)
+        # Frequenzbereiche den RGB-Kanälen zuordnen
+        for channel, (start_freq, end_freq) in enumerate(freq_ranges):
+            # Der jeweilige Frequenzbereich wird im entsprechenden Kanal intensiver dargestellt
+            rgb_image[channel, start_freq:end_freq, :] = log_s_norm[start_freq:end_freq, :]
 
-        # Stelle sicher, dass alle drei Kanäle die gleiche Größe haben
-        time_dim = min(log_s_tensor.size(2), mfcc_tensor.size(2), contrast_tensor.size(2))
-        log_s_tensor = log_s_tensor[:, :, :time_dim]
-        mfcc_tensor = mfcc_tensor[:, :, :time_dim]
-        contrast_tensor = contrast_tensor[:, :, :time_dim]
+        # In PyTorch-Tensor umwandeln
+        rgb_tensor = torch.from_numpy(rgb_image)
 
-        # Zusammenführen der drei Kanäle
-        feat = torch.cat([log_s_tensor, mfcc_tensor, contrast_tensor], dim=0)
+        # Masking auf dem RGB-Bild anwenden (falls gewünscht)
+        if self.subset == "train":
+            # Anwendung der Transformationen für jede Schicht einzeln
+            for i in range(3):
+                rgb_tensor[i:i + 1] = self.spec_transforms(rgb_tensor[i:i + 1])
+        else:
+            # Für Test/Validierung keine Maskierung
+            rgb_tensor = torch.tensor(rgb_tensor, dtype=torch.float)
 
         # Normalisierung, falls globale Statistiken vorhanden sind
         if self.global_mean:
-            feat = (feat - self.global_mean) / self.global_std
+            rgb_tensor = (rgb_tensor - self.global_mean) / self.global_std
 
-        return file_name, feat, class_id
+        return file_name, rgb_tensor, class_id
 
 
 def get_global_stats(data_path):
