@@ -178,8 +178,9 @@ class ESC50(data.Dataset):
 
             feat = log_s
             # erstelle echtes RGB-Bild
-            if feat.ndim == 2:
 
+            if feat.ndim == 2:
+                print("Dim: 2")
                 # Normalisieren für bessere Farbdarstellung
                 feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
@@ -206,7 +207,7 @@ class ESC50(data.Dataset):
                 feat = torch.tensor(multi_tensor, dtype=torch.float)
 
             else:
-                feat = feat.expand(3, -1, -1)
+                feat = feat.expand(4, -1, -1)
 
         # normalize
         if self.global_mean:
