@@ -169,7 +169,7 @@ class ESC50(data.Dataset):
                                                n_mels=config.n_mels,
                                                n_fft=1024,
                                                hop_length=config.hop_length,
-                                               #center=False,
+                                               # center=False,
                                                )
             log_s = librosa.power_to_db(s, ref=np.max)
 
@@ -177,43 +177,46 @@ class ESC50(data.Dataset):
             log_s = self.spec_transforms(log_s)
 
             feat = log_s
-            # erstelle echtes RGB-Bild
-            if feat.ndim == 2:
-                print("3 RGB Kanäle erzeugen... ", end="", flush=True)
-                # Normalisieren für bessere Farbdarstellung
-                feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
-                # Größe bestimmen
-                n_freqs = feat_norm.shape[0]
-                n_times = feat_norm.shape[1]
+            # Immer 4 Kanäle erzeugen: RGB + Gesamtbild
+            # Wenn wir nach der spec_transforms immer ein 3D Tensor haben (durch unsqueeze)
+            # reduzieren wir auf 2D für die Feature-Extraktion
 
-                # 4-Kanal-Tensor erstellen: 3 für RGB-Aufteilung + 1 für Gesamtbild
-                multi_tensor = np.zeros((4, n_freqs, n_times), dtype=np.float32)
-
-                # Kanal 1-3: Frequenzbereichs-Aufteilung wie bisher
-                freq_ranges = [
-                    (0, n_freqs // 3),  # Niedrig -> Rot
-                    (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
-                    (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
-                ]
-
-                for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-                    multi_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
-
-                # Kanal 4: Gesamtes Spektrogramm
-                multi_tensor[3, :, :] = feat_norm
-
-                feat = torch.tensor(multi_tensor, dtype=torch.float)
-
+            if feat.ndim == 3:
+                feat_data = feat.squeeze(0).numpy()  # Auf 2D reduzieren (n_freqs, n_times)
             else:
-                feat = feat.expand(4, -1, -1)
+                feat_data = feat.numpy()  # Bereits 2D
+
+            # Normalisieren für bessere Farbdarstellung
+            feat_norm = (feat_data - feat_data.min()) / (feat_data.max() - feat_data.min() + 1e-9)
+
+            # Größe bestimmen
+            n_freqs = feat_norm.shape[0]
+            n_times = feat_norm.shape[1]
+
+            # 4-Kanal-Tensor erstellen: 3 für RGB-Aufteilung + 1 für Gesamtbild
+            multi_tensor = np.zeros((4, n_freqs, n_times), dtype=np.float32)
+
+            # Kanal 1-3: Frequenzbereichs-Aufteilung für RGB
+            freq_ranges = [
+                (0, n_freqs // 3),  # Niedrig -> Rot
+                (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
+                (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
+            ]
+
+            for channel, (start_freq, end_freq) in enumerate(freq_ranges):
+                multi_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
+
+            # Kanal 4: Gesamtes Spektrogramm
+            multi_tensor[3, :, :] = feat_norm
+
+            feat = torch.tensor(multi_tensor, dtype=torch.float)
 
         # normalize
         if self.global_mean:
             feat = (feat - self.global_mean) / self.global_std
 
         return file_name, feat, class_id
-
 
 
 def get_global_stats(data_path):
