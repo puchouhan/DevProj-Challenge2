@@ -50,12 +50,12 @@ epochs = 100
 # early stopping after epochs with no improvement
 patience = 20
 lr = 5.5e-4
-weight_decay = 1e-4
+weight_decay = 1e-3
 beta1 = 0.9  # AdamW Beta1 Parameter
 beta2 = 0.999  # AdamW Beta2 Parameter
 eps = 1e-8   # AdamW Epsilon
 warm_epochs = 15
-dropout_rate = 0.2
+dropout_rate = 0.3
 gamma = 0.8
 step_size = 3
 
@@ -66,7 +66,7 @@ cosine_cycle_mult = 2  # Für CosineAnnealingWarmRestarts
 
 # ### TESTING
 # model checkpoints loaded for testing
-test_checkpoints = ['terminal.pt']  # ['terminal.pt', 'best_val_loss.pt']
+test_checkpoints = ['best_val_loss.pt']  # ['terminal.pt', 'best_val_loss.pt']
 # experiment folder used for testing (result from cross validation training)
 #test_experiment = 'results/2025-04-07-00-00'
 test_experiment = 'results/sample-run '
