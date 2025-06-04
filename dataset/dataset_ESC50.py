@@ -180,7 +180,7 @@ class ESC50(data.Dataset):
             # erstelle echtes RGB-Bild
 
 
-        feat = feat.expand(5, -1, -1)
+        feat = feat.expand(3, -1, -1)
 
         # normalize
         if self.global_mean:

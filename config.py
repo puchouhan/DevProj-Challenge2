@@ -26,8 +26,8 @@ hop_length = 512
 # output_size=config.n_classes,\
 # time_reduce=1)"
 
-model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
-#model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
+#model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
+model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
 #model_constructor = "resnet.resnet34_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_small_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_medium_audio(num_classes=config.n_classes)"
@@ -49,7 +49,7 @@ epochs = 100
 #epochs = 1
 # early stopping after epochs with no improvement
 patience = 20
-lr = 1e-4
+lr = 55e-5
 weight_decay = 1e-4
 beta1 = 0.9  # AdamW Beta1 Parameter
 beta2 = 0.999  # AdamW Beta2 Parameter
