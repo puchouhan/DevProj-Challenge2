@@ -180,7 +180,6 @@ class ESC50(data.Dataset):
             # erstelle echtes RGB-Bild
 
             if feat.ndim == 3:
-                print("Dim: 3")
                 # Normalisieren für bessere Farbdarstellung
                 feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
