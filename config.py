@@ -26,8 +26,8 @@ hop_length = 512
 # output_size=config.n_classes,\
 # time_reduce=1)"
 
-#model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
-model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
+model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
+#model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
 #model_constructor = "resnet.resnet34_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_small_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_medium_audio(num_classes=config.n_classes)"

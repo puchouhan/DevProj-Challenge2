@@ -179,41 +179,35 @@ class ESC50(data.Dataset):
             feat = log_s
             # erstelle echtes RGB-Bild
 
-            if feat.ndim == 3:
+            if feat.ndim == 2:
+                print("Dim: 2")
                 # Normalisieren für bessere Farbdarstellung
                 feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
-                # Dimensionen des Tensors ermitteln
-                # Bei feat.ndim == 3 ist feat_norm möglicherweise in Form [1, n_freqs, n_times]
-                _, n_freqs, n_times = feat_norm.shape
+                # Größe bestimmen
+                n_freqs = feat_norm.shape[0]
+                n_times = feat_norm.shape[1]
 
                 # 4-Kanal-Tensor erstellen: 3 für RGB-Aufteilung + 1 für Gesamtbild
                 multi_tensor = np.zeros((4, n_freqs, n_times), dtype=np.float32)
 
-                # Frequenzbereiche berechnen
-                freq_step = n_freqs // 3
+                # Kanal 1-3: Frequenzbereichs-Aufteilung wie bisher
                 freq_ranges = [
-                    (0, freq_step),  # Niedrig -> Rot
-                    (freq_step, 2 * freq_step),  # Mittel -> Grün
-                    (2 * freq_step, n_freqs)  # Hoch -> Blau
+                    (0, n_freqs // 3),  # Niedrig -> Rot
+                    (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
+                    (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
                 ]
 
-                # Jeden Frequenzbereich in den entsprechenden Kanal kopieren
                 for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-                    # Sicherstellen, dass wir gültige Indizes verwenden
-                    if start_freq < end_freq:
-                        # Hier den gesamten Frequenzbereich für alle Zeitpunkte kopieren
-                        multi_tensor[channel, start_freq:end_freq, :] = feat_norm[0, start_freq:end_freq, :]
+                    multi_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
 
                 # Kanal 4: Gesamtes Spektrogramm
-                multi_tensor[3, :, :] = feat_norm[0, :, :]
+                multi_tensor[3, :, :] = feat_norm
 
                 feat = torch.tensor(multi_tensor, dtype=torch.float)
 
             else:
-                print("Dim:")
-                print(feat.ndim)
-                feat = feat.expand(4, -1, -1)
+                feat = feat.expand(5, -1, -1)
 
         # normalize
         if self.global_mean:
