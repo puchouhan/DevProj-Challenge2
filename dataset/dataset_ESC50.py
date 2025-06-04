@@ -127,35 +127,33 @@ class ESC50(data.Dataset):
     def __getitem__(self, index):
         file_name = self.file_names[index]
         if index in self.cache:
-            feat, class_id = self.cache[index]
-            return file_name, feat, class_id
+            wave_copy, class_id = self.cache[index]
         else:
-            # Feature muss neu berechnet werden
             path = os.path.join(self.root, file_name)
             wave, rate = librosa.load(path, sr=config.sr)
 
-            # Klassen-ID aus dem Dateinamen ermitteln
+            # identifying the label of the sample from its name
             temp = file_name.split('.')[0]
             class_id = int(temp.split('-')[-1])
 
             if wave.ndim == 1:
                 wave = wave[:, np.newaxis]
 
-            # Wellen auf [-1, 1] normalisieren
+            # normalizing waves to [-1, 1]
             if np.abs(wave.max()) > 1.0:
                 wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
             wave = wave.T * 32768.0
 
-            # Stille Abschnitte entfernen
+            # Remove silent sections
             start = wave.nonzero()[1].min()
             end = wave.nonzero()[1].max()
             wave = wave[:, start: end + 1]
 
             wave_copy = np.copy(wave)
+            self.cache[index] = (wave_copy, class_id)
 
-            # Wave-Transformationen anwenden
-            wave_copy = self.wave_transforms(wave_copy)
-            wave_copy.squeeze_(0)
+        wave_copy = self.wave_transforms(wave_copy)
+        wave_copy.squeeze_(0)
 
         if self.n_mfcc:
             mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
@@ -214,9 +212,6 @@ class ESC50(data.Dataset):
         # normalize
         if self.global_mean:
             feat = (feat - self.global_mean) / self.global_std
-        # Fertiges Feature in den Cache legen
-        self.cache[index] = (feat, class_id)
-
 
         return file_name, feat, class_id
 
