@@ -199,7 +199,8 @@ class ESC50(data.Dataset):
                 ]
 
                 for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-                    multi_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
+                    if end_freq > start_freq:  # Stellen Sie sicher, dass der Bereich nicht leer ist
+                        multi_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
 
                 # Kanal 4: Gesamtes Spektrogramm
                 multi_tensor[3, :, :] = feat_norm
