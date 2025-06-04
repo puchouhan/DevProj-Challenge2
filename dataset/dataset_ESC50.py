@@ -184,23 +184,19 @@ class ESC50(data.Dataset):
                 # Normalisieren für bessere Farbdarstellung
                 feat_norm = (feat - feat.min()) / (feat.max() - feat.min() + 1e-9)
 
-                # Größe bestimmen
-                n_freqs = feat_norm.shape[0]
-                n_times = feat_norm.shape[1]
+                n_freqs, n_times = feat_norm.shape
+                freq_step = n_freqs // 3
+                freq_ranges = [
+                    (0, freq_step),
+                    (freq_step, 2 * freq_step),
+                    (2 * freq_step, n_freqs)
+                ]
 
                 # 4-Kanal-Tensor erstellen: 3 für RGB-Aufteilung + 1 für Gesamtbild
                 multi_tensor = np.zeros((4, n_freqs, n_times), dtype=np.float32)
 
-                # Kanal 1-3: Frequenzbereichs-Aufteilung wie bisher
-                freq_ranges = [
-                    (0, n_freqs // 3),  # Niedrig -> Rot
-                    (n_freqs // 3, 2 * n_freqs // 3),  # Mittel -> Grün
-                    (2 * n_freqs // 3, n_freqs)  # Hoch -> Blau
-                ]
-
                 for channel, (start_freq, end_freq) in enumerate(freq_ranges):
-                    if end_freq > start_freq:  # Stellen Sie sicher, dass der Bereich nicht leer ist
-                        multi_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
+                    multi_tensor[channel, start_freq:end_freq, :] = feat_norm[start_freq:end_freq, :]
 
                 # Kanal 4: Gesamtes Spektrogramm
                 multi_tensor[3, :, :] = feat_norm
