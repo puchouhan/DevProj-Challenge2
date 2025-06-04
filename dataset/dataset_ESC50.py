@@ -207,6 +207,8 @@ class ESC50(data.Dataset):
                 feat = torch.tensor(multi_tensor, dtype=torch.float)
 
             else:
+                print("Dim:")
+                print(feat.ndim)
                 feat = feat.expand(4, -1, -1)
 
         # normalize
