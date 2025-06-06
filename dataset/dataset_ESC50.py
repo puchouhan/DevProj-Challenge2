@@ -33,7 +33,7 @@ def download_file(url: str, fname: str, chunk_size=1024):
 
 
 def download_extract_zip(url: str, file_path: str):
-    #import wget
+    # import wget
     import zipfile
     root = os.path.dirname(file_path)
     # wget.download(url, out=file_path, bar=download_progress)
@@ -51,7 +51,7 @@ def download_progress(current, total, width=80):
 
 
 class ESC50(data.Dataset):
-    
+
     def __init__(self, root, test_folds=frozenset((1,)), subset="train", global_mean_std=(0.0, 0.0), download=False):
         self.cache = {}
         audio = 'ESC-50-master/audio'
@@ -97,7 +97,9 @@ class ESC50(data.Dataset):
                 transforms.RandomNoise(min_noise=0.001, max_noise=0.005),  # Nur im Training
                 transforms.RandomScale(max_scale=1.15),  # Nur im Training
                 transforms.RandomPadding(out_len=out_len, train=True),
-                transforms.RandomCrop(out_len=out_len, train=True)
+                transforms.RandomCrop(out_len=out_len, train=True),
+                transforms.RandomPitch(max_steps=3, min_steps=-3),
+
             )
             self.spec_transforms = transforms.Compose(
                 torch.Tensor,
@@ -159,18 +161,21 @@ class ESC50(data.Dataset):
             mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
                                         sr=config.sr,
                                         n_mels=config.n_mels,
-                                        n_fft=1024,
+                                        n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,  # Hier ändern
                                         hop_length=config.hop_length,
                                         n_mfcc=self.n_mfcc)
             feat = mfcc
+
         else:
             s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
                                                sr=config.sr,
                                                n_mels=config.n_mels,
-                                               n_fft=1024,
+                                               n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,
+                                               # Und hier ändern
                                                hop_length=config.hop_length,
-                                               #center=False,
+                                               # center=False,
                                                )
+
             log_s = librosa.power_to_db(s, ref=np.max)
 
             # masking the spectrograms
@@ -179,7 +184,6 @@ class ESC50(data.Dataset):
             feat = log_s
             # erstelle echtes RGB-Bild
 
-
         feat = feat.expand(3, -1, -1)
 
         # normalize
@@ -187,7 +191,6 @@ class ESC50(data.Dataset):
             feat = (feat - self.global_mean) / self.global_std
 
         return file_name, feat, class_id
-
 
 
 def get_global_stats(data_path):

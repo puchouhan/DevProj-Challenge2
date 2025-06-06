@@ -17,6 +17,8 @@ test_folds = [1, 2, 3, 4, 5]
 sr = 44100
 n_mels = 128
 hop_length = 512
+n_fft = 2048
+
 #n_mfcc = 42
 
 # model_constructor = "AudioMLP(n_steps=431,\
@@ -27,17 +29,17 @@ hop_length = 512
 # time_reduce=1)"
 
 #model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
-model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
-#model_constructor = "resnet.resnet34_audio(num_classes=config.n_classes)"
+#model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
+model_constructor = "resnet.resnet34_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_small_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_medium_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_large_audio(num_classes=config.n_classes)"
 
 # ###TRAINING
 # ratio to split off from training data
-val_size = .2  # could be changed
+val_size = .15  # could be changed
 device_id = 0
-batch_size = 48
+batch_size = 32
 # in Colab to avoid Warning
 num_workers = 4
 #num_workers = 0
@@ -45,23 +47,23 @@ num_workers = 4
 # num_workers = 6#16
 persistent_workers = True
 #persistent_workers = False
-epochs = 100
+epochs = 80
 #epochs = 1
 # early stopping after epochs with no improvement
-patience = 20
-lr = 55e-5
-weight_decay = 1e-4
+patience = 15
+lr = 3e-4
+weight_decay = 1e-5
 beta1 = 0.9  # AdamW Beta1 Parameter
 beta2 = 0.999  # AdamW Beta2 Parameter
 eps = 1e-8   # AdamW Epsilon
 warm_epochs = 15
-dropout_rate = 0.2
+dropout_rate = 0.3
 gamma = 0.8
 step_size = 3
 
-lr_scheduler = "cosine"  # Optionen: "step", "cosine", "cosine_warm_restarts"
-lr_min_factor = 0.01  # Minimale LR = Ausgangs-LR * lr_min_factor
-cosine_cycle_epochs = 10  # Für CosineAnnealingWarmRestarts
+lr_scheduler = "cosine_warm_restarts"  # Optionen: "step", "cosine", "cosine_warm_restarts"
+lr_min_factor = 0.001  # Minimale LR = Ausgangs-LR * lr_min_factor
+cosine_cycle_epochs = 15  # Für CosineAnnealingWarmRestarts
 cosine_cycle_mult = 2  # Für CosineAnnealingWarmRestarts
 
 # ### TESTING

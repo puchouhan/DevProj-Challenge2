@@ -175,6 +175,63 @@ class TimeMask():
         return self.addTimeMask(wave)
 
 
+class RandomPitch:
+    """
+    Führt eine zufällige Tonhöhenverschiebung (Pitch Shift) auf ein Audiosignal durch.
+    """
 
+    def __init__(self, max_steps=4, min_steps=-4):
+        """
+        Initialisiert die RandomPitch-Transformation.
 
+        Args:
+            max_steps (int): Maximale Anzahl der Halbtonschritte für die Erhöhung der Tonhöhe.
+            min_steps (int): Minimale Anzahl der Halbtonschritte für die Senkung der Tonhöhe.
+        """
+        self.max_steps = max_steps
+        self.min_steps = min_steps
 
+    def __call__(self, audio):
+        """
+        Führt die zufällige Tonhöhenverschiebung durch.
+
+        Args:
+            audio (torch.Tensor): Das Eingabe-Audiosignal.
+
+        Returns:
+            torch.Tensor: Das transformierte Audiosignal.
+        """
+        import librosa
+        import numpy as np
+        import torch
+
+        # Zufällige Anzahl der Halbtonschritte für die Verschiebung
+        n_steps = np.random.uniform(self.min_steps, self.max_steps)
+
+        # Konvertierung zu NumPy, falls es ein Torch-Tensor ist
+        is_torch = isinstance(audio, torch.Tensor)
+        if is_torch:
+            audio_np = audio.numpy()
+        else:
+            audio_np = audio
+
+        # Pitch Shift anwenden
+        if audio_np.ndim == 1:
+            # Für eindimensionales Audio
+            shifted = librosa.effects.pitch_shift(
+                y=audio_np,
+                sr=44100,  # Hinweis: Hier könnte config.sr besser sein
+                n_steps=n_steps
+            )
+        else:
+            # Für mehrdimensionales Audio (z.B. Stereo)
+            shifted = np.apply_along_axis(
+                lambda x: librosa.effects.pitch_shift(x, sr=44100, n_steps=n_steps),
+                axis=-1,
+                arr=audio_np
+            )
+
+        # Zurück zu Torch-Tensor, falls das Original ein Torch-Tensor war
+        if is_torch:
+            return torch.from_numpy(shifted).type(audio.dtype)
+        return shifted
