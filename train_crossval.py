@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,6 +34,26 @@ def format_time(seconds):
     return f"{minutes:02d}:{seconds:02d}"
 
 
+def mixup_data(x, y, alpha=0.2):
+    """Führt Mixup-Augmentation durch."""
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+
+    batch_size = x.size()[0]
+    index = torch.randperm(batch_size).to(x.device)
+
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+    return mixed_x, y_a, y_b, lam
+
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    """Berechnet Mixup-Loss."""
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
+
+
 # evaluate model on different testing data 'dataloader'
 def test(model, dataloader, criterion, device):
     model.eval()
@@ -61,6 +82,44 @@ def test(model, dataloader, criterion, device):
 
     acc = corrects / samples_count
     return acc, losses, probs
+
+
+def train_epoch():
+    # switch to training
+    model.train()
+
+    losses = []
+    corrects = 0
+    samples_count = 0
+    for _, x, label in tqdm(train_loader, unit='bat', disable=config.disable_bat_pbar, position=0):
+        x = x.float().to(device)
+        y_true = label.to(device)
+
+        # Anwendung von Mixup
+        x, y_a, y_b, lam = mixup_data(x, y_true, alpha=0.2)
+
+        # the forward pass through the model
+        y_prob = model(x)
+
+        # Mixup Loss
+        loss = mixup_criterion(criterion, y_prob, y_a, y_b, lam)
+
+        # reset the gradients to zero - avoids accumulation
+        optimizer.zero_grad()
+        # compute the gradient with backpropagation
+        loss.backward()
+        losses.append(loss.item())
+        # minimize the loss via the gradient - adapts the model parameters
+        optimizer.step()
+        scheduler.step()
+
+        # Bei Mixup wird die Genauigkeit auf vereinfachte Weise berechnet
+        y_pred = torch.argmax(y_prob, dim=1)
+        corrects += (y_pred == y_a).sum().item() * lam + (y_pred == y_b).sum().item() * (1 - lam)
+        samples_count += y_true.shape[0]
+
+    acc = corrects / samples_count
+    return acc, losses
 
 
 def print_training_parameters():
@@ -138,8 +197,8 @@ def fit_classifier():
             print("Early stopping")
             break
 
-        # advance the optimization scheduler
-        #scheduler.step()
+        # Hier nicht mehr nötig, da der Scheduler in train_epoch aktualisiert wird
+        # scheduler.step()
     # save full model
     torch.save(model.state_dict(), os.path.join(experiment, 'terminal.pt'))
 
@@ -217,7 +276,6 @@ if __name__ == "__main__":
             # Define a loss function and optimizer
             criterion = nn.CrossEntropyLoss(label_smoothing=config.label_smoothing).to(device)
 
-
             optimizer = torch.optim.AdamW(
                 model.parameters(),
                 lr=config.lr,
@@ -265,61 +323,3 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print(f"GESAMTLAUFZEIT: {format_time(total_time)} (Min:Sek)")
     print("=" * 50)
-
-
-    def mixup_data(x, y, alpha=0.2):
-        """Führt Mixup-Augmentation durch."""
-        if alpha > 0:
-            lam = np.random.beta(alpha, alpha)
-        else:
-            lam = 1
-
-        batch_size = x.size()[0]
-        index = torch.randperm(batch_size).to(x.device)
-
-        mixed_x = lam * x + (1 - lam) * x[index, :]
-        y_a, y_b = y, y[index]
-        return mixed_x, y_a, y_b, lam
-
-
-    def mixup_criterion(criterion, pred, y_a, y_b, lam):
-        """Berechnet Mixup-Loss."""
-        return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
-
-
-    def train_epoch():
-        # switch to training
-        model.train()
-
-        losses = []
-        corrects = 0
-        samples_count = 0
-        for _, x, label in tqdm(train_loader, unit='bat', disable=config.disable_bat_pbar, position=0):
-            x = x.float().to(device)
-            y_true = label.to(device)
-
-            # Anwendung von Mixup
-            x, y_a, y_b, lam = mixup_data(x, y_true, alpha=0.2)
-
-            # the forward pass through the model
-            y_prob = model(x)
-
-            # Mixup Loss
-            loss = mixup_criterion(criterion, y_prob, y_a, y_b, lam)
-
-            # reset the gradients to zero - avoids accumulation
-            optimizer.zero_grad()
-            # compute the gradient with backpropagation
-            loss.backward()
-            losses.append(loss.item())
-            # minimize the loss via the gradient - adapts the model parameters
-            optimizer.step()
-            scheduler.step()
-
-            # Bei Mixup wird die Genauigkeit auf vereinfachte Weise berechnet
-            y_pred = torch.argmax(y_prob, dim=1)
-            corrects += (y_pred == y_a).sum().item() * lam + (y_pred == y_b).sum().item() * (1 - lam)
-            samples_count += y_true.shape[0]
-
-        acc = corrects / samples_count
-        return acc, losses
