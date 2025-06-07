@@ -175,118 +175,37 @@ class TimeMask():
         return self.addTimeMask(wave)
 
 
-class RandomPitch:
+class RandomNoise:
     """
-    Führt eine zufällige Tonhöhenverschiebung (Pitch Shift) auf ein Audiosignal durch.
+    Fügt zufälliges Gaußsches Rauschen zum Audiosignal hinzu.
     """
 
-    def __init__(self, max_steps=4, min_steps=-4):
+    def __init__(self, min_noise=0.001, max_noise=0.01):
         """
-        Initialisiert die RandomPitch-Transformation.
+        Initialisiert die RandomNoise-Transformation.
 
         Args:
-            max_steps (int): Maximale Anzahl der Halbtonschritte für die Erhöhung der Tonhöhe.
-            min_steps (int): Minimale Anzahl der Halbtonschritte für die Senkung der Tonhöhe.
+            min_noise (float): Minimale Standardabweichung des Rauschens
+            max_noise (float): Maximale Standardabweichung des Rauschens
         """
-        self.max_steps = max_steps
-        self.min_steps = min_steps
+        super(RandomNoise, self).__init__()
 
-    def __call__(self, audio):
+        self.min_noise = min_noise
+        self.max_noise = max_noise
+
+    def addNoise(self, wave):
         """
-        Führt die zufällige Tonhöhenverschiebung durch.
-
-        Args:
-            audio (torch.Tensor): Das Eingabe-Audiosignal.
-
-        Returns:
-            torch.Tensor: Das transformierte Audiosignal.
+        Fügt weißes Rauschen mit zufälliger Stärke zum Signal hinzu.
         """
-        import librosa
-        import numpy as np
-        import torch
+        noise_val = random.uniform(self.min_noise, self.max_noise)
+        # Stellen Sie sicher, dass die Form des Rauschens mit der Eingabe übereinstimmt
+        noise = torch.from_numpy(np.random.normal(0, noise_val, wave.shape))
+        noisy_wave = wave + noise
 
-        # Zufällige Anzahl der Halbtonschritte für die Verschiebung
-        n_steps = np.random.uniform(self.min_steps, self.max_steps)
-
-        # Konvertierung zu NumPy, falls es ein Torch-Tensor ist
-        is_torch = isinstance(audio, torch.Tensor)
-        if is_torch:
-            audio_np = audio.numpy()
-        else:
-            audio_np = audio
-
-        # Pitch Shift anwenden
-        if audio_np.ndim == 1:
-            # Für eindimensionales Audio
-            shifted = librosa.effects.pitch_shift(
-                y=audio_np,
-                sr=44100,  # Hinweis: Hier könnte config.sr besser sein
-                n_steps=n_steps
-            )
-        else:
-            # Für mehrdimensionales Audio (z.B. Stereo)
-            shifted = np.apply_along_axis(
-                lambda x: librosa.effects.pitch_shift(x, sr=44100, n_steps=n_steps),
-                axis=-1,
-                arr=audio_np
-            )
-
-        # Zurück zu Torch-Tensor, falls das Original ein Torch-Tensor war
-        if is_torch:
-            return torch.from_numpy(shifted).type(audio.dtype)
-        return shifted
-
-
-class RandomTimeShift:
-    """
-    Verschiebt das Audiosignal zufällig in der Zeit.
-    """
-
-    def __init__(self, max_shift_sec=1.0, sr=44100):
-        """
-        Initialisiert die RandomTimeShift-Transformation.
-
-        Args:
-            max_shift_sec (float): Maximale Verschiebung in Sekunden
-            sr (int): Sampling-Rate des Audiosignals
-        """
-        super(RandomTimeShift, self).__init__()
-
-        self.max_shift_samples = int(max_shift_sec * sr)
-
-    def shift_time(self, wave):
-        """
-        Verschiebt das Signal zufällig nach links oder rechts und füllt die
-        entstehende Lücke mit Stille auf.
-        """
-        shift = random.randint(-self.max_shift_samples, self.max_shift_samples)
-
-        # Kein Shift notwendig
-        if shift == 0:
-            return wave
-
-        # Verschiebung nach rechts
-        if shift > 0:
-            shifted_wave = torch.cat((torch.zeros(shift, device=wave.device, dtype=wave.dtype),
-                                      wave[:-shift] if shift < wave.shape[0] else torch.tensor([], dtype=wave.dtype)))
-        # Verschiebung nach links
-        else:
-            shift = abs(shift)
-            shifted_wave = torch.cat((wave[shift:],
-                                      torch.zeros(shift, device=wave.device, dtype=wave.dtype)))
-
-        # Stellen Sie sicher, dass die Ausgabe die gleiche Länge hat wie die Eingabe
-        if shifted_wave.shape[0] > wave.shape[0]:
-            shifted_wave = shifted_wave[:wave.shape[0]]
-        elif shifted_wave.shape[0] < wave.shape[0]:
-            shifted_wave = torch.cat((shifted_wave,
-                                      torch.zeros(wave.shape[0] - shifted_wave.shape[0],
-                                                  device=wave.device, dtype=wave.dtype)))
-
-        return shifted_wave
+        return noisy_wave
 
     def __call__(self, x):
-        return self.shift_time(x)
+        return self.addNoise(x)
 
 
 class RandomVolume:
@@ -348,31 +267,68 @@ class RandomTimeShift:
         Verschiebt das Signal zufällig nach links oder rechts und füllt die
         entstehende Lücke mit Stille auf.
         """
-        shift = random.randint(-self.max_shift_samples, self.max_shift_samples)
+        # Überprüfen der Form des Eingangs
+        if len(wave.shape) == 1:
+            # Eindimensionales Signal (nur Samples)
+            shift = random.randint(-self.max_shift_samples, self.max_shift_samples)
 
-        # Kein Shift notwendig
-        if shift == 0:
-            return wave
+            # Kein Shift notwendig
+            if shift == 0:
+                return wave
 
-        # Verschiebung nach rechts
-        if shift > 0:
-            shifted_wave = torch.cat((torch.zeros(shift, device=wave.device, dtype=wave.dtype),
-                                      wave[:-shift] if shift < wave.shape[0] else torch.tensor([], dtype=wave.dtype)))
-        # Verschiebung nach links
+            # Verschiebung nach rechts
+            if shift > 0:
+                shifted_wave = torch.cat([
+                    torch.zeros(shift, device=wave.device, dtype=wave.dtype),
+                    wave[:-shift] if shift < wave.shape[0] else torch.tensor([], device=wave.device, dtype=wave.dtype)
+                ])
+            # Verschiebung nach links
+            else:
+                shift = abs(shift)
+                shifted_wave = torch.cat([
+                    wave[shift:],
+                    torch.zeros(shift, device=wave.device, dtype=wave.dtype)
+                ])
+
+            # Sicherstellen, dass die Ausgabe die gleiche Länge hat wie die Eingabe
+            if shifted_wave.shape[0] > wave.shape[0]:
+                shifted_wave = shifted_wave[:wave.shape[0]]
+            elif shifted_wave.shape[0] < wave.shape[0]:
+                shifted_wave = torch.cat([
+                    shifted_wave,
+                    torch.zeros(wave.shape[0] - shifted_wave.shape[0], device=wave.device, dtype=wave.dtype)
+                ])
+
+            return shifted_wave
+
+        elif len(wave.shape) == 2:
+            # Zweidimensionales Signal (Kanäle, Samples)
+            n_channels, n_samples = wave.shape
+            shift = random.randint(-self.max_shift_samples, self.max_shift_samples)
+
+            # Kein Shift notwendig
+            if shift == 0:
+                return wave
+
+            # Ausgabe-Tensor mit der gleichen Form wie Eingabe erstellen
+            shifted_wave = torch.zeros_like(wave)
+
+            # Verschiebung nach rechts
+            if shift > 0:
+                if shift < n_samples:
+                    shifted_wave[:, shift:] = wave[:, :n_samples - shift]
+            # Verschiebung nach links
+            else:
+                shift = abs(shift)
+                if shift < n_samples:
+                    shifted_wave[:, :n_samples - shift] = wave[:, shift:]
+
+            return shifted_wave
+
         else:
-            shift = abs(shift)
-            shifted_wave = torch.cat((wave[shift:],
-                                      torch.zeros(shift, device=wave.device, dtype=wave.dtype)))
-
-        # Stellen Sie sicher, dass die Ausgabe die gleiche Länge hat wie die Eingabe
-        if shifted_wave.shape[0] > wave.shape[0]:
-            shifted_wave = shifted_wave[:wave.shape[0]]
-        elif shifted_wave.shape[0] < wave.shape[0]:
-            shifted_wave = torch.cat((shifted_wave,
-                                      torch.zeros(wave.shape[0] - shifted_wave.shape[0],
-                                                  device=wave.device, dtype=wave.dtype)))
-
-        return shifted_wave
+            raise ValueError(f"Unerwartete Dimensionalität des Signals: {wave.shape}")
 
     def __call__(self, x):
         return self.shift_time(x)
+
+
