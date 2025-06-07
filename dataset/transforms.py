@@ -235,3 +235,55 @@ class RandomPitch:
         if is_torch:
             return torch.from_numpy(shifted).type(audio.dtype)
         return shifted
+
+
+class RandomTimeShift:
+    """
+    Verschiebt das Audiosignal zufällig in der Zeit.
+    """
+
+    def __init__(self, max_shift_sec=1.0, sr=44100):
+        """
+        Initialisiert die RandomTimeShift-Transformation.
+
+        Args:
+            max_shift_sec (float): Maximale Verschiebung in Sekunden
+            sr (int): Sampling-Rate des Audiosignals
+        """
+        super(RandomTimeShift, self).__init__()
+
+        self.max_shift_samples = int(max_shift_sec * sr)
+
+    def shift_time(self, wave):
+        """
+        Verschiebt das Signal zufällig nach links oder rechts und füllt die
+        entstehende Lücke mit Stille auf.
+        """
+        shift = random.randint(-self.max_shift_samples, self.max_shift_samples)
+
+        # Kein Shift notwendig
+        if shift == 0:
+            return wave
+
+        # Verschiebung nach rechts
+        if shift > 0:
+            shifted_wave = torch.cat((torch.zeros(shift, device=wave.device, dtype=wave.dtype),
+                                      wave[:-shift] if shift < wave.shape[0] else torch.tensor([], dtype=wave.dtype)))
+        # Verschiebung nach links
+        else:
+            shift = abs(shift)
+            shifted_wave = torch.cat((wave[shift:],
+                                      torch.zeros(shift, device=wave.device, dtype=wave.dtype)))
+
+        # Stellen Sie sicher, dass die Ausgabe die gleiche Länge hat wie die Eingabe
+        if shifted_wave.shape[0] > wave.shape[0]:
+            shifted_wave = shifted_wave[:wave.shape[0]]
+        elif shifted_wave.shape[0] < wave.shape[0]:
+            shifted_wave = torch.cat((shifted_wave,
+                                      torch.zeros(wave.shape[0] - shifted_wave.shape[0],
+                                                  device=wave.device, dtype=wave.dtype)))
+
+        return shifted_wave
+
+    def __call__(self, x):
+        return self.shift_time(x)

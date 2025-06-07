@@ -93,14 +93,16 @@ class ESC50(data.Dataset):
         train = self.subset == "train"
         if train:
             self.wave_transforms = transforms.Compose(
-                torch.Tensor,
-                transforms.RandomNoise(min_noise=0.001, max_noise=0.005),  # Nur im Training
-                transforms.RandomScale(max_scale=1.15),  # Nur im Training
-                transforms.RandomPadding(out_len=out_len, train=True),
-                transforms.RandomCrop(out_len=out_len, train=True),
-               # transforms.RandomPitch(max_steps=3, min_steps=-3),
-
+                torch.Tensor,  # 1. Konvertierung zu Tensor
+                transforms.RandomTimeShift(max_shift_sec=0.5),  # 2. Zeitverschiebung
+                #transforms.RandomPitch(max_steps=3, min_steps=-3),  # 3. Tonhöhenänderung
+                transforms.RandomScale(max_scale=1.2),  # 4. Skalierung/Tempo-Änderung
+                transforms.RandomVolume(min_gain=0.6, max_gain=1.4),  # 5. Lautstärkeänderung
+                transforms.RandomNoise(min_noise=0.001, max_noise=0.01),  # 6. Rauschen hinzufügen
+                transforms.RandomPadding(out_len=out_len, train=True),  # 7. Padding
+                transforms.RandomCrop(out_len=out_len, train=True)  # 8. Zuschneiden
             )
+
             self.spec_transforms = transforms.Compose(
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
