@@ -95,7 +95,7 @@ class ESC50(data.Dataset):
             self.wave_transforms = transforms.Compose(
                 torch.Tensor,  # 1. Konvertierung zu Tensor
                 transforms.RandomTimeShift(max_shift_sec=0.5),  # 2. Zeitverschiebung
-                #transforms.RandomPitch(max_steps=3, min_steps=-3),  # 3. Tonhöhenänderung
+                transforms.RandomPitch(max_steps=3, min_steps=-3),  # 3. Tonhöhenänderung
                 transforms.RandomScale(max_scale=1.2),  # 4. Skalierung/Tempo-Änderung
                 transforms.RandomVolume(min_gain=0.6, max_gain=1.4),  # 5. Lautstärkeänderung
                 transforms.RandomNoise(min_noise=0.001, max_noise=0.01),  # 6. Rauschen hinzufügen
