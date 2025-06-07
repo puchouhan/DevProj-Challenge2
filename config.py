@@ -52,14 +52,18 @@ epochs = 120
 # early stopping after epochs with no improvement
 patience = 15
 lr = 55e-5
-weight_decay = 1e-4
+weight_decay = 5e-4
 beta1 = 0.9  # AdamW Beta1 Parameter
 beta2 = 0.999  # AdamW Beta2 Parameter
 eps = 1e-8   # AdamW Epsilon
 warm_epochs = 15
-dropout_rate = 0.3
-gamma = 0.8
+dropout_rate = 0.5
+gamma = 0.6
 step_size = 3
+
+augmentation_strength = 1.5
+label_smoothing = 0.1
+
 
 lr_scheduler = "cosine_warm_restarts"  # Optionen: "step", "cosine", "cosine_warm_restarts"
 lr_min_factor = 0.001  # Minimale LR = Ausgangs-LR * lr_min_factor

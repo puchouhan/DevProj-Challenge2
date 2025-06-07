@@ -63,38 +63,6 @@ def test(model, dataloader, criterion, device):
     return acc, losses, probs
 
 
-def train_epoch():
-    # switch to training
-    model.train()
-
-    losses = []
-    corrects = 0
-    samples_count = 0
-    for _, x, label in tqdm(train_loader, unit='bat', disable=config.disable_bat_pbar, position=0):
-        x = x.float().to(device)
-        y_true = label.to(device)
-
-        # the forward pass through the model
-        y_prob = model(x)
-
-        # we could also use 'F.one_hot(y_true)' for 'y_true', but this would be slower
-        loss = criterion(y_prob, y_true)
-        # reset the gradients to zero - avoids accumulation
-        optimizer.zero_grad()
-        # compute the gradient with backpropagation
-        loss.backward()
-        losses.append(loss.item())
-        # minimize the loss via the gradient - adapts the model parameters
-        optimizer.step()
-
-        y_pred = torch.argmax(y_prob, dim=1)
-        corrects += (y_pred == y_true).sum().item()
-        samples_count += y_true.shape[0]
-
-    acc = corrects / samples_count
-    return acc, losses
-
-
 def print_training_parameters():
     """Gibt alle wichtigen Trainingsparameter in der Konsole aus."""
     print("\n" + "=" * 50)
@@ -171,7 +139,7 @@ def fit_classifier():
             break
 
         # advance the optimization scheduler
-        scheduler.step()
+        #scheduler.step()
     # save full model
     torch.save(model.state_dict(), os.path.join(experiment, 'terminal.pt'))
 
@@ -247,7 +215,8 @@ if __name__ == "__main__":
             print('*****')
 
             # Define a loss function and optimizer
-            criterion = nn.CrossEntropyLoss().to(device)
+            criterion = nn.CrossEntropyLoss(label_smoothing=config.label_smoothing).to(device)
+
 
             optimizer = torch.optim.AdamW(
                 model.parameters(),
@@ -258,11 +227,14 @@ if __name__ == "__main__":
                 weight_decay=config.weight_decay
             )
 
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer,
-                T_0=25,  # Länge des ersten Zyklus (in Epochen)
-                T_mult=2,  # Faktor, mit dem sich die Zykluslänge multipliziert
-                eta_min=config.lr * 0.01  # Minimale LR
+                max_lr=config.lr,
+                steps_per_epoch=len(train_loader),
+                epochs=config.epochs,
+                pct_start=0.3,  # 30% der Zeit für Warm-up
+                div_factor=25,  # initial_lr = max_lr/25
+                final_div_factor=1000  # min_lr = initial_lr/1000
             )
 
             # fit the model using only training and validation data, no testing data allowed here
@@ -293,3 +265,61 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print(f"GESAMTLAUFZEIT: {format_time(total_time)} (Min:Sek)")
     print("=" * 50)
+
+
+    def mixup_data(x, y, alpha=0.2):
+        """Führt Mixup-Augmentation durch."""
+        if alpha > 0:
+            lam = np.random.beta(alpha, alpha)
+        else:
+            lam = 1
+
+        batch_size = x.size()[0]
+        index = torch.randperm(batch_size).to(x.device)
+
+        mixed_x = lam * x + (1 - lam) * x[index, :]
+        y_a, y_b = y, y[index]
+        return mixed_x, y_a, y_b, lam
+
+
+    def mixup_criterion(criterion, pred, y_a, y_b, lam):
+        """Berechnet Mixup-Loss."""
+        return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
+
+
+    def train_epoch():
+        # switch to training
+        model.train()
+
+        losses = []
+        corrects = 0
+        samples_count = 0
+        for _, x, label in tqdm(train_loader, unit='bat', disable=config.disable_bat_pbar, position=0):
+            x = x.float().to(device)
+            y_true = label.to(device)
+
+            # Anwendung von Mixup
+            x, y_a, y_b, lam = mixup_data(x, y_true, alpha=0.2)
+
+            # the forward pass through the model
+            y_prob = model(x)
+
+            # Mixup Loss
+            loss = mixup_criterion(criterion, y_prob, y_a, y_b, lam)
+
+            # reset the gradients to zero - avoids accumulation
+            optimizer.zero_grad()
+            # compute the gradient with backpropagation
+            loss.backward()
+            losses.append(loss.item())
+            # minimize the loss via the gradient - adapts the model parameters
+            optimizer.step()
+            scheduler.step()
+
+            # Bei Mixup wird die Genauigkeit auf vereinfachte Weise berechnet
+            y_pred = torch.argmax(y_prob, dim=1)
+            corrects += (y_pred == y_a).sum().item() * lam + (y_pred == y_b).sum().item() * (1 - lam)
+            samples_count += y_true.shape[0]
+
+        acc = corrects / samples_count
+        return acc, losses
