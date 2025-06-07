@@ -332,3 +332,110 @@ class RandomTimeShift:
         return self.shift_time(x)
 
 
+class RandomPitch:
+    """
+    Führt eine zufällige Tonhöhenverschiebung (Pitch Shift) auf ein Audiosignal durch.
+    """
+
+    def __init__(self, max_steps=4, min_steps=-4):
+        """
+        Initialisiert die RandomPitch-Transformation.
+
+        Args:
+            max_steps (int): Maximale Anzahl der Halbtonschritte für die Erhöhung der Tonhöhe.
+            min_steps (int): Minimale Anzahl der Halbtonschritte für die Senkung der Tonhöhe.
+        """
+        super(RandomPitch, self).__init__()
+
+        self.max_steps = max_steps
+        self.min_steps = min_steps
+
+    def shift_pitch(self, audio):
+        """
+        Führt die zufällige Tonhöhenverschiebung durch.
+
+        Args:
+            audio (torch.Tensor): Das Eingabe-Audiosignal.
+
+        Returns:
+            torch.Tensor: Das transformierte Audiosignal.
+        """
+        # Zufällige Anzahl der Halbtonschritte für die Verschiebung
+        n_steps = np.random.uniform(self.min_steps, self.max_steps)
+
+        # Konvertierung zu NumPy, falls es ein Torch-Tensor ist
+        is_torch = isinstance(audio, torch.Tensor)
+        if is_torch:
+            # Dimension speichern
+            original_shape = audio.shape
+            original_device = audio.device
+            original_dtype = audio.dtype
+
+            # Zu NumPy konvertieren
+            if len(original_shape) == 2:  # [channels, samples]
+                audio_np = audio.cpu().numpy()
+                # Transponieren für librosa (samples, channels)
+                if original_shape[0] <= 4:  # Vermutlich Kanäle zuerst
+                    audio_np = audio_np.T
+                    transposed = True
+                else:
+                    transposed = False
+            else:
+                audio_np = audio.cpu().numpy()
+                transposed = False
+        else:
+            audio_np = audio
+            transposed = False
+            original_shape = audio.shape
+
+        # Pitch Shift anwenden
+        if audio_np.ndim == 1 or (audio_np.ndim == 2 and audio_np.shape[1] <= 4):
+            # Für eindimensionales Audio oder mehrkanaliges Audio
+            shifted = librosa.effects.pitch_shift(
+                y=audio_np,
+                sr=44100,
+                n_steps=n_steps
+            )
+        else:
+            # Für mehrdimensionales Audio (mehrere Kanäle)
+            shifted = np.apply_along_axis(
+                lambda x: librosa.effects.pitch_shift(x, sr=44100, n_steps=n_steps),
+                axis=0,
+                arr=audio_np
+            )
+
+        # Zurück zu Torch-Tensor, falls das Original ein Torch-Tensor war
+        if is_torch:
+            # Wenn es transponiert wurde, rücktransponieren
+            if transposed:
+                shifted = shifted.T
+
+            # Zurück zum Tensor und ursprüngliches Gerät/Datentyp
+            shifted_tensor = torch.from_numpy(shifted).to(device=original_device, dtype=original_dtype)
+
+            # Stellen Sie sicher, dass die Form übereinstimmt
+            if shifted_tensor.shape != original_shape:
+                # Falls die Länge unterschiedlich ist, anpassen
+                if len(original_shape) == 1:
+                    if shifted_tensor.shape[0] < original_shape[0]:
+                        padding = torch.zeros(original_shape[0] - shifted_tensor.shape[0],
+                                              device=original_device, dtype=original_dtype)
+                        shifted_tensor = torch.cat([shifted_tensor, padding])
+                    else:
+                        shifted_tensor = shifted_tensor[:original_shape[0]]
+                else:  # 2D
+                    if shifted_tensor.shape[1] < original_shape[1]:
+                        padding = torch.zeros(original_shape[0], original_shape[1] - shifted_tensor.shape[1],
+                                              device=original_device, dtype=original_dtype)
+                        shifted_tensor = torch.cat([shifted_tensor, padding], dim=1)
+                    else:
+                        shifted_tensor = shifted_tensor[:, :original_shape[1]]
+
+            return shifted_tensor
+
+        return shifted
+
+    def __call__(self, x):
+        return self.shift_pitch(x)
+
+
