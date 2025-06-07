@@ -98,7 +98,7 @@ class ESC50(data.Dataset):
                 transforms.RandomScale(max_scale=1.15),  # Nur im Training
                 transforms.RandomPadding(out_len=out_len, train=True),
                 transforms.RandomCrop(out_len=out_len, train=True),
-                transforms.RandomPitch(max_steps=3, min_steps=-3),
+               # transforms.RandomPitch(max_steps=3, min_steps=-3),
 
             )
             self.spec_transforms = transforms.Compose(
