@@ -39,7 +39,7 @@ model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
 # ratio to split off from training data
 val_size = .15  # could be changed
 device_id = 0
-batch_size = 32
+batch_size = 48
 # in Colab to avoid Warning
 num_workers = 4
 #num_workers = 0
