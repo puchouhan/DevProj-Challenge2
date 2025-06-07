@@ -17,7 +17,7 @@ test_folds = [1, 2, 3, 4, 5]
 sr = 44100
 n_mels = 128
 hop_length = 512
-n_fft = 2048
+#n_fft = 2048
 
 #n_mfcc = 42
 
@@ -28,8 +28,8 @@ n_fft = 2048
 # output_size=config.n_classes,\
 # time_reduce=1)"
 
-model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
-#model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
+#model_constructor = "resnet.resnet18_audio(num_classes=config.n_classes)"
+model_constructor = "resnet.resnet14_audio(num_classes=config.n_classes)"
 #model_constructor = "resnet.resnet34_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_small_audio(num_classes=config.n_classes)"
 #model_constructor = "cnn.cnn_medium_audio(num_classes=config.n_classes)"
@@ -47,12 +47,12 @@ num_workers = 4
 # num_workers = 6#16
 persistent_workers = True
 #persistent_workers = False
-epochs = 80
+epochs = 120
 #epochs = 1
 # early stopping after epochs with no improvement
 patience = 15
-lr = 3e-4
-weight_decay = 1e-5
+lr = 55e-5
+weight_decay = 1e-4
 beta1 = 0.9  # AdamW Beta1 Parameter
 beta2 = 0.999  # AdamW Beta2 Parameter
 eps = 1e-8   # AdamW Epsilon
