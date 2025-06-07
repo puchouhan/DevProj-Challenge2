@@ -287,3 +287,92 @@ class RandomTimeShift:
 
     def __call__(self, x):
         return self.shift_time(x)
+
+
+class RandomVolume:
+    """
+    Ändert die Lautstärke des Audiosignals zufällig.
+    """
+
+    def __init__(self, min_gain=0.5, max_gain=1.5):
+        """
+        Initialisiert die RandomVolume-Transformation.
+
+        Args:
+            min_gain (float): Minimaler Verstärkungsfaktor
+            max_gain (float): Maximaler Verstärkungsfaktor
+        """
+        super(RandomVolume, self).__init__()
+
+        self.min_gain = min_gain
+        self.max_gain = max_gain
+
+    def adjust_volume(self, wave):
+        """
+        Ändert die Lautstärke durch Multiplikation mit einem zufälligen Faktor.
+        """
+        gain = random.uniform(self.min_gain, self.max_gain)
+        adjusted_wave = wave * gain
+
+        # Clipping vermeiden bei zu hoher Verstärkung
+        if gain > 1.0:
+            max_val = torch.max(torch.abs(adjusted_wave))
+            if max_val > 32767.0:  # Typischer Maximalwert für 16-bit Audio
+                adjusted_wave = adjusted_wave * (32767.0 / max_val)
+
+        return adjusted_wave
+
+    def __call__(self, x):
+        return self.adjust_volume(x)
+
+
+class RandomTimeShift:
+    """
+    Verschiebt das Audiosignal zufällig in der Zeit.
+    """
+
+    def __init__(self, max_shift_sec=1.0, sr=44100):
+        """
+        Initialisiert die RandomTimeShift-Transformation.
+
+        Args:
+            max_shift_sec (float): Maximale Verschiebung in Sekunden
+            sr (int): Sampling-Rate des Audiosignals
+        """
+        super(RandomTimeShift, self).__init__()
+
+        self.max_shift_samples = int(max_shift_sec * sr)
+
+    def shift_time(self, wave):
+        """
+        Verschiebt das Signal zufällig nach links oder rechts und füllt die
+        entstehende Lücke mit Stille auf.
+        """
+        shift = random.randint(-self.max_shift_samples, self.max_shift_samples)
+
+        # Kein Shift notwendig
+        if shift == 0:
+            return wave
+
+        # Verschiebung nach rechts
+        if shift > 0:
+            shifted_wave = torch.cat((torch.zeros(shift, device=wave.device, dtype=wave.dtype),
+                                      wave[:-shift] if shift < wave.shape[0] else torch.tensor([], dtype=wave.dtype)))
+        # Verschiebung nach links
+        else:
+            shift = abs(shift)
+            shifted_wave = torch.cat((wave[shift:],
+                                      torch.zeros(shift, device=wave.device, dtype=wave.dtype)))
+
+        # Stellen Sie sicher, dass die Ausgabe die gleiche Länge hat wie die Eingabe
+        if shifted_wave.shape[0] > wave.shape[0]:
+            shifted_wave = shifted_wave[:wave.shape[0]]
+        elif shifted_wave.shape[0] < wave.shape[0]:
+            shifted_wave = torch.cat((shifted_wave,
+                                      torch.zeros(wave.shape[0] - shifted_wave.shape[0],
+                                                  device=wave.device, dtype=wave.dtype)))
+
+        return shifted_wave
+
+    def __call__(self, x):
+        return self.shift_time(x)
