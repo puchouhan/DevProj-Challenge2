@@ -6,14 +6,31 @@ import pandas as pd
 import numpy as np
 import os
 import datetime
+import time
 from tqdm import tqdm
 import sys
 from functools import partial
 
-from models.model_classifier import ResNet, ResidualBlock
+from models.model_classifier import AudioMLP
+from models import resnet
+
 from models.utils import EarlyStopping, Tee
 from dataset.dataset_ESC50 import ESC50
 import config
+
+# mean and std of train data for every fold
+global_stats = np.array([[-54.364834, 20.853344],
+                         [-54.279022, 20.847532],
+                         [-54.18343, 20.80387],
+                         [-54.223698, 20.798292],
+                         [-54.200905, 20.949806]])
+
+
+# Funktion, um Sekunden in Min:Sek-Format umzuwandeln
+def format_time(seconds):
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes:02d}:{seconds:02d}"
 
 
 # evaluate model on different testing data 'dataloader'
@@ -78,7 +95,48 @@ def train_epoch():
     return acc, losses
 
 
+def print_training_parameters():
+    """Gibt alle wichtigen Trainingsparameter in der Konsole aus."""
+    print("\n" + "=" * 50)
+    print("TRAININGSPARAMETER:")
+    print("=" * 50)
+
+    print("\nMODELL:")
+    print(f"- Model: {config.model_constructor}")
+    print(f"- Dropout Rate: {config.dropout_rate if hasattr(config, 'dropout_rate') else 'None'}")
+
+    print("\nDATENREPRÄSENTATION:")
+    print(f"- Sampling Rate: {config.sr}")
+    print(f"- Mel Filter: {config.n_mels}")
+    print(f"- Hop Length: {config.hop_length}")
+    print(f"- MFCC: {config.n_mfcc if hasattr(config, 'n_mfcc') else 'None'}")
+
+    print("\nTRAININGSKONFIGURATION:")
+    print(f"- Validierungs-Anteil: {config.val_size}")
+    print(f"- Batch Size: {config.batch_size}")
+    print(f"- Epochs: {config.epochs}")
+    print(f"- Early Stopping Patience: {config.patience}")
+    print(f"- Device: {device}")
+
+    print("\nOPTIMIERUNG:")
+    print(f"- Learning Rate: {config.lr}")
+    print(f"- Weight Decay: {config.weight_decay}")
+    print(f"- Warm-Up Epochs: {config.warm_epochs}")
+    print(f"- LR Gamma: {config.gamma}")
+    print(f"- LR Step Size: {config.step_size}")
+
+    print("\nDATENAUGMENTATION:")
+    print(f"- Random Noise: min={0.001}, max={0.005}")
+    print(f"- Random Scale: max_scale={1.15}")
+    print(f"- Frequency Mask: width={16}, numbers={3}")
+    print(f"- Time Mask: width={20}, numbers={3}")
+
+    print("=" * 50 + "\n")
+
+
 def fit_classifier():
+    print_training_parameters()
+
     num_epochs = config.epochs
 
     loss_stopping = EarlyStopping(patience=config.patience, delta=0.002, verbose=True, float_fmt=float_fmt,
@@ -128,6 +186,8 @@ def make_model():
 
 
 if __name__ == "__main__":
+    # Startzeit messen
+    start_time = time.time()
     data_path = config.esc50_path
     use_cuda = torch.cuda.is_available()
     device = torch.device(f"cuda:{config.device_id}" if use_cuda else "cpu")
@@ -137,11 +197,14 @@ if __name__ == "__main__":
     pd.options.display.float_format = ('{:,' + float_fmt + '}').format
     runs_path = config.runs_path
     experiment_root = os.path.join(runs_path, str(datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')))
-    if not os.path.exists(experiment_root):
-        os.mkdir(experiment_root)
+    os.makedirs(experiment_root, exist_ok=True)
 
     # for all folds
     scores = {}
+    # expensive!
+    # global_stats = get_global_stats(data_path)
+    # for spectrograms
+    print("WARNING: Using hardcoded global mean and std. Depends on feature settings!")
     for test_fold in config.test_folds:
         experiment = os.path.join(experiment_root, f'{test_fold}')
         if not os.path.exists(experiment):
@@ -151,7 +214,8 @@ if __name__ == "__main__":
         with Tee(os.path.join(experiment, 'train.log'), 'w', 1, encoding='utf-8',
                  newline='\n', proc_cr=True):
             # this function assures consistent 'test_folds' setting for train, val, test splits
-            get_fold_dataset = partial(ESC50, test_folds={test_fold}, root=data_path, download=True)
+            get_fold_dataset = partial(ESC50, root=data_path, download=True,
+                                       test_folds={test_fold}, global_mean_std=global_stats[test_fold - 1])
 
             train_set = get_fold_dataset(subset="train")
             print('*****')
@@ -183,6 +247,7 @@ if __name__ == "__main__":
             print('*****')
 
             # Define a loss function and optimizer
+            # Define a loss function and optimizer
             criterion = nn.CrossEntropyLoss().to(device)
 
             optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
@@ -211,3 +276,11 @@ if __name__ == "__main__":
             print()
     scores = pd.concat(scores).unstack([-1])
     print(pd.concat((scores, scores.agg(['mean', 'std']))))
+
+    # Endzeit messen und Gesamtlaufzeit berechnen
+    end_time = time.time()
+    total_time = end_time - start_time
+
+    print("\n" + "=" * 50)
+    print(f"GESAMTLAUFZEIT: {format_time(total_time)} (Min:Sek)")
+    print("=" * 50)
