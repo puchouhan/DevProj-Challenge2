@@ -158,7 +158,13 @@ class ESC50(data.Dataset):
         wave_copy.squeeze_(0)
 
         if self.n_mfcc:
-            print("BLLLLLLLAAA")
+            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
+                                        sr=config.sr,
+                                        n_mels=config.n_mels,
+                                        n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,  # Hier ändern
+                                        hop_length=config.hop_length,
+                                        n_mfcc=self.n_mfcc)
+            feat = mfcc
 
         else:
             s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
