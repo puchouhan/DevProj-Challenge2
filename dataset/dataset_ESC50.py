@@ -165,7 +165,6 @@ class ESC50(data.Dataset):
                                                sr=config.sr,
                                                n_mels=config.n_mels,
                                                n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,
-                                               # Und hier ändern
                                                hop_length=config.hop_length,
                                                # center=False,
                                                )

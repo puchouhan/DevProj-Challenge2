@@ -23,6 +23,9 @@ test_experiment = 'results/2024-06-09-11-48'
 
 # sampling rate for waves
 sr = 44100
+n_mels = 128
+n_fft=1024
+hop_length=512
 
 device_id = 0
 batch_size = 32
