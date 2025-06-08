@@ -11,8 +11,7 @@ from tqdm import tqdm
 import sys
 from functools import partial
 
-from models.model_classifier import AudioMLP
-from models import resnet
+from models.resnet import ResNet
 
 from models.utils import EarlyStopping, Tee
 from dataset.dataset_ESC50 import ESC50

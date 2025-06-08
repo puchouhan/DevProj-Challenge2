@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import config
 
 
 class ResNet(nn.Module):
@@ -73,85 +72,3 @@ class ResidualBlock(nn.Module):
         out += residual
         out = self.relu(out)
         return out
-
-
-def resnet14_audio(num_classes=50, input_channels=3):
-    """Konstruiert ein ResNet-14 Modell für Audiodaten mit ResidualBlock mit verbesserter Regularisierung."""
-    model = ResNet(ResidualBlock, [1, 1, 1, 1], num_classes=num_classes)
-
-    # Anpassung des ersten Convolutional Layers für input_channels
-    model.conv1 = nn.Sequential(
-        nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3),
-        nn.BatchNorm2d(64),
-        nn.ReLU(),
-        nn.Dropout2d(p=config.dropout_rate))
-
-    # Füge Dropout zu den Ausgabeschichten hinzu
-    model.fc = nn.Sequential(
-        nn.Dropout(p=config.dropout_rate),
-        nn.Linear(512, num_classes)
-    )
-
-    # Verbesserte Gewichtsinitialisierung
-    for m in model.modules():
-        if isinstance(m, nn.Conv2d):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-        elif isinstance(m, nn.BatchNorm2d):
-            nn.init.constant_(m.weight, 1)
-            nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Linear):
-            nn.init.xavier_normal_(m.weight)
-            nn.init.constant_(m.bias, 0)
-
-    return model
-
-
-def resnet18_audio(num_classes=50, input_channels=3):
-    """Konstruiert ein ResNet-18 Modell für Audiodaten mit ResidualBlock."""
-    model = ResNet(ResidualBlock, [2, 2, 2, 2], num_classes=num_classes)
-    # Anpassung des ersten Convolutional Layers für input_channels
-    model.conv1 = nn.Sequential(
-        nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3),
-        nn.BatchNorm2d(64),
-        nn.ReLU())
-    return model
-
-def resnet34_audio(num_classes=50, input_channels=3):
-    """Konstruiert ein ResNet-34 Modell für Audiodaten mit ResidualBlock."""
-    model = ResNet(ResidualBlock, [3, 4, 6, 3], num_classes=num_classes)
-    # Anpassung des ersten Convolutional Layers für input_channels
-    model.conv1 = nn.Sequential(
-        nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3),
-        nn.BatchNorm2d(64),
-        nn.ReLU())
-    return model
-
-def resnet50_audio(num_classes=50, input_channels=3):
-    """Konstruiert ein ResNet-50 ähnliches Modell für Audiodaten."""
-    model = ResNet(ResidualBlock, [3, 4, 6, 3], num_classes=num_classes)
-    # Anpassung des ersten Convolutional Layers für input_channels
-    model.conv1 = nn.Sequential(
-        nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3),
-        nn.BatchNorm2d(64),
-        nn.ReLU())
-    return model
-
-def resnet101_audio(num_classes=50, input_channels=3):
-    """Konstruiert ein ResNet-101 ähnliches Modell für Audiodaten."""
-    model = ResNet(ResidualBlock, [3, 4, 23, 3], num_classes=num_classes)
-    # Anpassung des ersten Convolutional Layers für input_channels
-    model.conv1 = nn.Sequential(
-        nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3),
-        nn.BatchNorm2d(64),
-        nn.ReLU())
-    return model
-
-def resnet152_audio(num_classes=50, input_channels=3):
-    """Konstruiert ein ResNet-152 ähnliches Modell für Audiodaten."""
-    model = ResNet(ResidualBlock, [3, 8, 36, 3], num_classes=num_classes)
-    # Anpassung des ersten Convolutional Layers für input_channels
-    model.conv1 = nn.Sequential(
-        nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3),
-        nn.BatchNorm2d(64),
-        nn.ReLU())
-    return model
