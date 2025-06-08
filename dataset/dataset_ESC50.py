@@ -183,7 +183,6 @@ class ESC50(data.Dataset):
             log_s = self.spec_transforms(log_s)
 
             feat = log_s
-            # erstelle echtes RGB-Bild
 
         # normalize
         if self.global_mean:
