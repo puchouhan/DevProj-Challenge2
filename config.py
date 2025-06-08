@@ -1,5 +1,5 @@
 esc50_path = 'data/esc50'
-#esc50_path = 'D:/sound_datasets/esc50'
+
 runs_path = 'results'
 # sub-epoch (batch-level) progress bar display
 disable_bat_pbar = False#True

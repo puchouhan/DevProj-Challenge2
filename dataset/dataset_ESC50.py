@@ -126,43 +126,68 @@ class ESC50(data.Dataset):
 
     def __getitem__(self, index):
         file_name = self.file_names[index]
-        path = os.path.join(self.root, file_name)
-        wave, rate = librosa.load(path, sr=config.sr)
+        if index in self.cache:
+            wave_copy, class_id = self.cache[index]
+        else:
+            path = os.path.join(self.root, file_name)
+            wave, rate = librosa.load(path, sr=config.sr)
 
-        # identifying the label of the sample from its name
-        temp = file_name.split('.')[0]
-        class_id = int(temp.split('-')[-1])
+            # identifying the label of the sample from its name
+            temp = file_name.split('.')[0]
+            class_id = int(temp.split('-')[-1])
 
-        if wave.ndim == 1:
-            wave = wave[:, np.newaxis]
+            if wave.ndim == 1:
+                wave = wave[:, np.newaxis]
 
-        # normalizing waves to [-1, 1]
-        if np.abs(wave.max()) > 1.0:
-            wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
-        wave = wave.T * 32768.0
+            # normalizing waves to [-1, 1]
+            if np.abs(wave.max()) > 1.0:
+                wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
+            wave = wave.T * 32768.0
 
-        # Remove silent sections
-        start = wave.nonzero()[1].min()
-        end = wave.nonzero()[1].max()
-        wave = wave[:, start: end + 1]
+            # Remove silent sections
+            start = wave.nonzero()[1].min()
+            end = wave.nonzero()[1].max()
+            wave = wave[:, start: end + 1]
 
-        wave_copy = np.copy(wave)
+            wave_copy = np.copy(wave)
+            self.cache[index] = (wave_copy, class_id)
+
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
 
-        s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                           sr=config.sr,
-                                           n_mels=128,
-                                           n_fft=1024,
-                                           hop_length=512)
-        log_s = librosa.power_to_db(s, ref=np.max)
+        if self.n_mfcc:
+            print("BLLLLLLLAAA")
+            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
+                                        sr=config.sr,
+                                        n_mels=config.n_mels,
+                                        n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,  # Hier ändern
+                                        hop_length=config.hop_length,
+                                        n_mfcc=self.n_mfcc)
+            feat = mfcc
 
-        # masking the spectrograms
-        log_s = self.spec_transforms(log_s)
+        else:
+            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                               sr=config.sr,
+                                               n_mels=config.n_mels,
+                                               n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,
+                                               # Und hier ändern
+                                               hop_length=config.hop_length,
+                                               # center=False,
+                                               )
 
-        # creating 3 channels by copying log_s1 3 times
-        #spec = torch.cat((log_s, log_s, log_s), dim=0)
-        # CNN needs 1 channel
-        spec = log_s
+            log_s = librosa.power_to_db(s, ref=np.max)
 
-        return file_name, spec, class_id
+            # masking the spectrograms
+            log_s = self.spec_transforms(log_s)
+
+            feat = log_s
+
+        return file_name, feat, class_id
+
+    def get_global_stats(data_path):
+        res = []
+        for i in range(1, 6):
+            train_set = ESC50(subset="train", test_folds={i}, root=data_path, download=True)
+            a = torch.concatenate([v[1] for v in tqdm(train_set)])
+            res.append((a.mean(), a.std()))
+        return np.array(res)
