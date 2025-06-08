@@ -124,12 +124,6 @@ def print_training_parameters():
     print(f"- LR Gamma: {config.gamma}")
     print(f"- LR Step Size: {config.step_size}")
 
-    print("\nDATENAUGMENTATION:")
-    print(f"- Random Noise: min={0.001}, max={0.005}")
-    print(f"- Random Scale: max_scale={1.15}")
-    print(f"- Frequency Mask: width={16}, numbers={3}")
-    print(f"- Time Mask: width={20}, numbers={3}")
-
     print("=" * 50 + "\n")
 
 
