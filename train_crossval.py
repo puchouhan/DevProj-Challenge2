@@ -215,7 +215,7 @@ if __name__ == "__main__":
                  newline='\n', proc_cr=True):
             # this function assures consistent 'test_folds' setting for train, val, test splits
             get_fold_dataset = partial(ESC50, root=data_path, download=True,
-                                       test_folds={test_fold}, global_mean_std=global_stats[test_fold - 1])
+                                       test_folds={test_fold})
 
             train_set = get_fold_dataset(subset="train")
             print('*****')

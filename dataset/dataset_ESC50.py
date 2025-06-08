@@ -52,7 +52,7 @@ def download_progress(current, total, width=80):
 
 class ESC50(data.Dataset):
 
-    def __init__(self, root, test_folds=frozenset((1,)), subset="train", global_mean_std=(0.0, 0.0), download=False):
+    def __init__(self, root, test_folds=frozenset((1,)), subset="train", download=False):
         self.cache = {}
         audio = 'ESC-50-master/audio'
         root = os.path.normpath(root)
@@ -168,12 +168,12 @@ class ESC50(data.Dataset):
 
         else:
             s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                       sr=config.sr,
-                                       n_mels=config.n_mels,
-                                       n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,
-                                       hop_length=config.hop_length,
-                                       # center=False,
-                                       )
+                                               sr=config.sr,
+                                               n_mels=config.n_mels,
+                                               n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,
+                                               hop_length=config.hop_length,
+                                               # center=False,
+                                               )
 
             log_s = librosa.power_to_db(s, ref=np.max)
 
