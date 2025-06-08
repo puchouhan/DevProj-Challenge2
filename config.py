@@ -1,6 +1,6 @@
 esc50_path = 'data/esc50'
 
-runs_path = 'results'
+runs_path = 'resulsts'
 # sub-epoch (batch-level) progress bar display
 disable_bat_pbar = False#True
 
