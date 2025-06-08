@@ -33,7 +33,7 @@ def download_file(url: str, fname: str, chunk_size=1024):
 
 
 def download_extract_zip(url: str, file_path: str):
-    # import wget
+    #import wget
     import zipfile
     root = os.path.dirname(file_path)
     # wget.download(url, out=file_path, bar=download_progress)
@@ -52,8 +52,7 @@ def download_progress(current, total, width=80):
 
 class ESC50(data.Dataset):
 
-    def __init__(self, root, test_folds=frozenset((1,)), subset="train", global_mean_std=(0.0, 0.0), download=False):
-        self.cache = {}
+    def __init__(self, root, test_folds=frozenset((1,)), subset="train", download=False):
         audio = 'ESC-50-master/audio'
         root = os.path.normpath(root)
         audio = os.path.join(root, audio)
@@ -88,117 +87,82 @@ class ESC50(data.Dataset):
                 self.file_names = train_files
             else:
                 self.file_names = val_files
-        # the number of samples in the wave (=length) required for spectrogram
-        out_len = int(((config.sr * 5) // config.hop_length) * config.hop_length)
         train = self.subset == "train"
         if train:
+            # augment training data with transformations that include randomness
+            # transforms can be applied on wave and spectral representation
             self.wave_transforms = transforms.Compose(
-                torch.Tensor,  # 1. Konvertierung zu Tensor
-                transforms.RandomTimeShift(max_shift_sec=0.5),  # 2. Zeitverschiebung
-                transforms.RandomPitch(max_steps=3, min_steps=-3),  # 3. Tonhöhenänderung
-                transforms.RandomScale(max_scale=1.2),  # 4. Skalierung/Tempo-Änderung
-                transforms.RandomVolume(min_gain=0.6, max_gain=1.4),  # 5. Lautstärkeänderung
-                transforms.RandomNoise(min_noise=0.001, max_noise=0.01),  # 6. Rauschen hinzufügen
-                transforms.RandomPadding(out_len=out_len, train=True),  # 7. Padding
-                transforms.RandomCrop(out_len=out_len, train=True)  # 8. Zuschneiden
+                torch.Tensor,
+                transforms.RandomScale(max_scale=1.25),
+                transforms.RandomPadding(out_len=220500),
+                transforms.RandomCrop(out_len=220500),
+                transforms.RandomNoise()
+            )
+
+            self.spec_transforms = transforms.Compose(
+                # to Tensor and prepend singleton dim
+                #lambda x: torch.Tensor(x).unsqueeze(0),
+                # lambda non-pickleable, problem on windows, replace with partial function
+                torch.Tensor,
+                partial(torch.unsqueeze, dim=0),
+            )
+
+        else:
+            # for testing transforms are applied deterministically to support reproducible scores
+            self.wave_transforms = transforms.Compose(
+                torch.Tensor,
+                # disable randomness
+                transforms.RandomPadding(out_len=220500, train=False),
+                transforms.RandomCrop(out_len=220500, train=False)
             )
 
             self.spec_transforms = transforms.Compose(
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
-                transforms.FrequencyMask(max_width=16, numbers=3),  # Nur im Training
-                transforms.TimeMask(max_width=20, numbers=3)  # Nur im Training
             )
-        else:  # Für Validierung/Test
-            self.wave_transforms = transforms.Compose(
-                torch.Tensor,
-                # Kein RandomNoise, kein RandomScale
-                transforms.RandomPadding(out_len=out_len, train=False),  # Deterministisches Padding
-                transforms.RandomCrop(out_len=out_len, train=False)  # Deterministischer Crop
-            )
-            self.spec_transforms = transforms.Compose(
-                torch.Tensor,
-                partial(torch.unsqueeze, dim=0)
-                # Kein FrequencyMask, kein TimeMask
-            )
-        self.global_mean = global_mean_std[0]
-        self.global_std = global_mean_std[1]
-        self.n_mfcc = config.n_mfcc if hasattr(config, "n_mfcc") else None
 
     def __len__(self):
         return len(self.file_names)
 
     def __getitem__(self, index):
         file_name = self.file_names[index]
-        if index in self.cache:
-            wave_copy, class_id = self.cache[index]
-        else:
-            path = os.path.join(self.root, file_name)
-            wave, rate = librosa.load(path, sr=config.sr)
+        path = os.path.join(self.root, file_name)
+        wave, rate = librosa.load(path, sr=config.sr)
 
-            # identifying the label of the sample from its name
-            temp = file_name.split('.')[0]
-            class_id = int(temp.split('-')[-1])
+        # identifying the label of the sample from its name
+        temp = file_name.split('.')[0]
+        class_id = int(temp.split('-')[-1])
 
-            if wave.ndim == 1:
-                wave = wave[:, np.newaxis]
+        if wave.ndim == 1:
+            wave = wave[:, np.newaxis]
 
-            # normalizing waves to [-1, 1]
-            if np.abs(wave.max()) > 1.0:
-                wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
-            wave = wave.T * 32768.0
+        # normalizing waves to [-1, 1]
+        if np.abs(wave.max()) > 1.0:
+            wave = transforms.scale(wave, wave.min(), wave.max(), -1.0, 1.0)
+        wave = wave.T * 32768.0
 
-            # Remove silent sections
-            start = wave.nonzero()[1].min()
-            end = wave.nonzero()[1].max()
-            wave = wave[:, start: end + 1]
+        # Remove silent sections
+        start = wave.nonzero()[1].min()
+        end = wave.nonzero()[1].max()
+        wave = wave[:, start: end + 1]
 
-            wave_copy = np.copy(wave)
-            self.cache[index] = (wave_copy, class_id)
-
+        wave_copy = np.copy(wave)
         wave_copy = self.wave_transforms(wave_copy)
         wave_copy.squeeze_(0)
 
-        if self.n_mfcc:
-            mfcc = librosa.feature.mfcc(y=wave_copy.numpy(),
-                                        sr=config.sr,
-                                        n_mels=config.n_mels,
-                                        n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,  # Hier ändern
-                                        hop_length=config.hop_length,
-                                        n_mfcc=self.n_mfcc)
-            feat = mfcc
+        s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
+                                           sr=config.sr,
+                                           n_mels=128,
+                                           n_fft=1024,
+                                           hop_length=512)
+        log_s = librosa.power_to_db(s, ref=np.max)
 
-        else:
-            s = librosa.feature.melspectrogram(y=wave_copy.numpy(),
-                                               sr=config.sr,
-                                               n_mels=config.n_mels,
-                                               n_fft=config.n_fft if hasattr(config, "n_fft") else 1024,
-                                               # Und hier ändern
-                                               hop_length=config.hop_length,
-                                               # center=False,
-                                               )
+        # masking the spectrograms
+        log_s = self.spec_transforms(log_s)
 
-            log_s = librosa.power_to_db(s, ref=np.max)
+        # creating 3 channels by copying log_s1 3 times
+        #spec = torch.cat((log_s, log_s, log_s), dim=0)
+        # CNN needs 1 channel
+        spec = log_s
 
-            # masking the spectrograms
-            log_s = self.spec_transforms(log_s)
-
-            feat = log_s
-            # erstelle echtes RGB-Bild
-
-        feat = feat.expand(3, -1, -1)
-
-        # normalize
-        if self.global_mean:
-            feat = (feat - self.global_mean) / self.global_std
-
-        return file_name, feat, class_id
-
-
-def get_global_stats(data_path):
-    res = []
-    for i in range(1, 6):
-        train_set = ESC50(subset="train", test_folds={i}, root=data_path, download=True)
-        a = torch.concatenate([v[1] for v in tqdm(train_set)])
-        res.append((a.mean(), a.std()))
-    return np.array(res)
+        return file_name, spec, class_id
