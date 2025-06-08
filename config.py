@@ -35,6 +35,9 @@ warm_epochs = 10
 gamma = 0.8
 step_size = 5
 
+dropout_rate = 0.2
+in_channels = 1
+
 
 # model checkpoints loaded for testing
 test_checkpoints = ['terminal.pt']  # ['terminal.pt', 'best_val_loss.pt']
