@@ -185,8 +185,6 @@ class ESC50(data.Dataset):
             feat = log_s
             # erstelle echtes RGB-Bild
 
-        feat = feat.expand(3, -1, -1)
-
         # normalize
         if self.global_mean:
             feat = (feat - self.global_mean) / self.global_std
