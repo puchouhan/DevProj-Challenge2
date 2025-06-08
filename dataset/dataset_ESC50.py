@@ -121,6 +121,7 @@ class ESC50(data.Dataset):
                 torch.Tensor,
                 partial(torch.unsqueeze, dim=0),
             )
+        self.n_mfcc = config.n_mfcc if hasattr(config, "n_mfcc") else None
 
     def __len__(self):
         return len(self.file_names)
