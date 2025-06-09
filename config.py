@@ -29,11 +29,11 @@ num_workers = 4#16
 persistent_workers = True
 epochs = 100
 patience = 20
-lr = 1e-3
+lr = 55e-5
 weight_decay = 1e-3
 warm_epochs = 10
 gamma = 0.8
-step_size = 5
+step_size = 3
 
 dropout_rate = 0.2
 in_channels = 1
